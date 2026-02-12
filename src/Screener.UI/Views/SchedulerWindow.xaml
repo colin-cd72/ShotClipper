@@ -1,0 +1,301 @@
+<Window x:Class="Screener.UI.Views.SchedulerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Recording Scheduler"
+        Height="650" Width="900"
+        MinHeight="500" MinWidth="800"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BackgroundPrimaryBrush}">
+
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="280"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Panel: Schedule List -->
+        <Border Background="{DynamicResource BackgroundSecondaryBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <Border Background="{DynamicResource BackgroundTertiaryBrush}"
+                        CornerRadius="4,4,0,0"
+                        Padding="12,8">
+                    <TextBlock Text="Scheduled Recordings"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                </Border>
+
+                <!-- Schedule List -->
+                <ListBox Grid.Row="1"
+                         ItemsSource="{Binding Schedules}"
+                         SelectedItem="{Binding SelectedSchedule}"
+                         Background="Transparent"
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="12,8" BorderThickness="0,0,0,1"
+                                    BorderBrush="{DynamicResource BorderBrush}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8"
+                                                 Fill="{Binding StatusColor}"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,8,0"/>
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding StartTimeFormatted}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Margin="16,2,0,0"/>
+
+                                    <TextBlock Grid.Row="2"
+                                               Text="{Binding DurationFormatted}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"
+                                               Margin="16,2,0,0"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Add/Remove Buttons -->
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="8">
+                    <Button Content="+"
+                            Command="{Binding AddScheduleCommand}"
+                            Width="32" Height="32"
+                            FontSize="18"
+                            Style="{DynamicResource SecondaryButtonStyle}"
+                            Margin="0,0,8,0"/>
+                    <Button Content="-"
+                            Command="{Binding RemoveScheduleCommand}"
+                            Width="32" Height="32"
+                            FontSize="18"
+                            Style="{DynamicResource SecondaryButtonStyle}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Right Panel: Schedule Details -->
+        <Border Grid.Column="1"
+                Background="{DynamicResource BackgroundSecondaryBrush}"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Margin="16,0,0,0">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="16">
+                <StackPanel>
+                    <!-- Name -->
+                    <TextBlock Text="Schedule Name"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding EditingSchedule.Name, UpdateSourceTrigger=PropertyChanged}"
+                             Background="{DynamicResource BackgroundTertiaryBrush}"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             BorderBrush="{DynamicResource BorderBrush}"
+                             Padding="8,6"
+                             Margin="0,0,0,16"/>
+
+                    <!-- Start Time -->
+                    <TextBlock Text="Start Date &amp; Time"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="100"/>
+                        </Grid.ColumnDefinitions>
+
+                        <DatePicker SelectedDate="{Binding EditingSchedule.StartDate}"
+                                    Background="{DynamicResource BackgroundTertiaryBrush}"
+                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}"/>
+
+                        <TextBlock Grid.Column="1" Text="at"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="12,0"/>
+
+                        <TextBox Grid.Column="2"
+                                 Text="{Binding EditingSchedule.StartTime, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{DynamicResource BackgroundTertiaryBrush}"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 Padding="8,6"/>
+                    </Grid>
+
+                    <!-- Duration -->
+                    <TextBlock Text="Duration"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="80"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Text="{Binding EditingSchedule.DurationHours, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{DynamicResource BackgroundTertiaryBrush}"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 Padding="8,6" HorizontalContentAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="h"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="8,0"/>
+
+                        <TextBox Grid.Column="2"
+                                 Text="{Binding EditingSchedule.DurationMinutes, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{DynamicResource BackgroundTertiaryBrush}"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 Padding="8,6" HorizontalContentAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="m"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="8,0"/>
+
+                        <TextBox Grid.Column="4"
+                                 Text="{Binding EditingSchedule.DurationSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{DynamicResource BackgroundTertiaryBrush}"
+                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                 BorderBrush="{DynamicResource BorderBrush}"
+                                 Padding="8,6" HorizontalContentAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Encoding Preset -->
+                    <TextBlock Text="Encoding Preset"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding EncodingPresets}"
+                              SelectedItem="{Binding EditingSchedule.SelectedPreset}"
+                              DisplayMemberPath="Name"
+                              Background="{DynamicResource BackgroundTertiaryBrush}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"
+                              Margin="0,0,0,16"/>
+
+                    <!-- Filename Template -->
+                    <TextBlock Text="Filename Template"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding EditingSchedule.FilenameTemplate, UpdateSourceTrigger=PropertyChanged}"
+                             Background="{DynamicResource BackgroundTertiaryBrush}"
+                             Foreground="{DynamicResource TextPrimaryBrush}"
+                             BorderBrush="{DynamicResource BorderBrush}"
+                             Padding="8,6"
+                             Margin="0,0,0,16"/>
+
+                    <!-- Recurrence -->
+                    <TextBlock Text="Recurrence"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4"/>
+                    <ComboBox ItemsSource="{Binding RecurrenceOptions}"
+                              SelectedItem="{Binding EditingSchedule.SelectedRecurrence}"
+                              Background="{DynamicResource BackgroundTertiaryBrush}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"
+                              Margin="0,0,0,8"/>
+
+                    <!-- Days of Week (for weekly recurrence) -->
+                    <WrapPanel Margin="0,0,0,16"
+                               Visibility="{Binding EditingSchedule.ShowDaysOfWeek, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <CheckBox Content="Mon" IsChecked="{Binding EditingSchedule.Monday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0"/>
+                        <CheckBox Content="Tue" IsChecked="{Binding EditingSchedule.Tuesday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0"/>
+                        <CheckBox Content="Wed" IsChecked="{Binding EditingSchedule.Wednesday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0"/>
+                        <CheckBox Content="Thu" IsChecked="{Binding EditingSchedule.Thursday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0"/>
+                        <CheckBox Content="Fri" IsChecked="{Binding EditingSchedule.Friday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0"/>
+                        <CheckBox Content="Sat" IsChecked="{Binding EditingSchedule.Saturday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0"/>
+                        <CheckBox Content="Sun" IsChecked="{Binding EditingSchedule.Sunday}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </WrapPanel>
+
+                    <!-- Auto Upload -->
+                    <CheckBox Content="Auto-upload when complete"
+                              IsChecked="{Binding EditingSchedule.AutoUpload}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"
+                              Margin="0,0,0,8"/>
+
+                    <!-- Upload Provider (when auto-upload enabled) -->
+                    <StackPanel Visibility="{Binding EditingSchedule.AutoUpload, Converter={StaticResource BoolToVisibilityConverter}}"
+                                Margin="24,0,0,16">
+                        <TextBlock Text="Upload to:"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,0,0,4"/>
+                        <ComboBox ItemsSource="{Binding CloudProviders}"
+                                  SelectedItem="{Binding EditingSchedule.SelectedUploadProvider}"
+                                  DisplayMemberPath="DisplayName"
+                                  Background="{DynamicResource BackgroundTertiaryBrush}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Enabled -->
+                    <CheckBox Content="Schedule enabled"
+                              IsChecked="{Binding EditingSchedule.IsEnabled}"
+                              Foreground="{DynamicResource TextPrimaryBrush}"
+                              Margin="0,0,0,24"/>
+
+                    <!-- Conflict Warning -->
+                    <Border Background="#331F1F00"
+                            BorderBrush="#CCAA00"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="12,8"
+                            Visibility="{Binding HasConflict, Converter={StaticResource BoolToVisibilityConverter}}"
+                            Margin="0,0,0,16">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="!"
+                                       Foreground="#CCAA00"
+                                       FontWeight="Bold"
+                                       Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding ConflictMessage}"
+                                       Foreground="#CCAA00"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Save/Cancel Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Cancel Changes"
+                                Command="{Binding CancelEditCommand}"
+                                Padding="16,8"
+                                Margin="0,0,12,0"
+                                Style="{DynamicResource SecondaryButtonStyle}"/>
+                        <Button Content="Save Schedule"
+                                Command="{Binding SaveScheduleCommand}"
+                                Padding="16,8"
+                                Style="{DynamicResource PrimaryButtonStyle}"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</Window>

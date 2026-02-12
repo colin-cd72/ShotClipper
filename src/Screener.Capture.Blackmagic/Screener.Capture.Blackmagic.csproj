@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Screener.Capture.Blackmagic</RootNamespace>
+    <AssemblyName>Screener.Capture.Blackmagic</AssemblyName>
+    <Description>Blackmagic DeckLink SDK integration for SDI capture</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
+    <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Serilog" />
+  </ItemGroup>
+
+  <!-- DeckLink COM Reference - uncomment when SDK is installed
+  <ItemGroup>
+    <COMReference Include="DeckLinkAPI">
+      <Guid>{D864517A-EDD5-466D-867D-C819F1C052BB}</Guid>
+      <VersionMajor>1</VersionMajor>
+      <VersionMinor>0</VersionMinor>
+      <Lcid>0</Lcid>
+      <WrapperTool>tlbimp</WrapperTool>
+      <Isolated>False</Isolated>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+    </COMReference>
+  </ItemGroup>
+  -->
+  <!-- Include native DLL for P/Invoke -->
+  <ItemGroup>
+    <None Include="..\Screener.Capture.Blackmagic.Native\bin\$(Configuration)\Screener.Capture.Blackmagic.Native.dll"
+          Condition="Exists('..\Screener.Capture.Blackmagic.Native\bin\$(Configuration)\Screener.Capture.Blackmagic.Native.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Screener.Capture.Blackmagic.Native.dll</Link>
+    </None>
+  </ItemGroup>
+</Project>

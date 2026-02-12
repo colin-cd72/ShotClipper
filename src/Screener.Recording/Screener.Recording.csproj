@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Screener.Recording</RootNamespace>
+    <AssemblyName>Screener.Recording</AssemblyName>
+    <Description>Recording session management and file output</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
+    <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+    <ProjectReference Include="..\Screener.Encoding\Screener.Encoding.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Serilog" />
+  </ItemGroup>
+</Project>

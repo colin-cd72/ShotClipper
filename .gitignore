@@ -1,0 +1,57 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+# Build artifacts
+*.dll
+*.exe
+*.pdb
+!Icon/*.exe
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# User-specific files
+*.rsuser
+*.user
+
+# JetBrains Rider
+*.sln.iml
+
+# Windows image file caches
+ehthumbs.db
+
+# Publish output
+publish/
+
+# NuGet v3's project.json files produces more files
+*.nuget.props
+*.nuget.targets
+
+# Chutzpah Test files
+_Chutzpah*
+
+# Dotnet tool manifest
+.config/dotnet-tools.json
+
+# Local settings
+appsettings.Development.json
+appsettings.Local.json

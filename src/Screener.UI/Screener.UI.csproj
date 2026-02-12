@@ -1,0 +1,96 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Screener.UI</RootNamespace>
+    <AssemblyName>Screener</AssemblyName>
+    <Description>Screener - Professional Video Capture Application</Description>
+    <UseWPF>true</UseWPF>
+    <StartupObject>Screener.UI.App</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon>screener.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
+    <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+    <ProjectReference Include="..\Screener.Capture.Blackmagic\Screener.Capture.Blackmagic.csproj" />
+    <ProjectReference Include="..\Screener.Encoding\Screener.Encoding.csproj" />
+    <ProjectReference Include="..\Screener.Recording\Screener.Recording.csproj" />
+    <ProjectReference Include="..\Screener.Preview\Screener.Preview.csproj" />
+    <ProjectReference Include="..\Screener.Clipping\Screener.Clipping.csproj" />
+    <ProjectReference Include="..\Screener.Timecode\Screener.Timecode.csproj" />
+    <ProjectReference Include="..\Screener.Upload\Screener.Upload.csproj" />
+    <ProjectReference Include="..\Screener.Streaming\Screener.Streaming.csproj" />
+    <ProjectReference Include="..\Screener.Scheduling\Screener.Scheduling.csproj" />
+    <ProjectReference Include="..\Screener.Capture.Ndi\Screener.Capture.Ndi.csproj" />
+    <ProjectReference Include="..\Screener.Capture.Srt\Screener.Capture.Srt.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <Resource Include="screener.ico" />
+  </ItemGroup>
+
+  <!-- Copy DeckLink DLLs for registration-free COM -->
+  <ItemGroup Condition="Exists('C:\Program Files\Blackmagic Design\Blackmagic Desktop Video\DeckLinkAPI64.dll')">
+    <None Include="C:\Program Files\Blackmagic Design\Blackmagic Desktop Video\DeckLinkAPI64.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>DeckLinkAPI64.dll</Link>
+    </None>
+    <None Include="C:\Program Files\Blackmagic Design\Blackmagic Desktop Video\Decklink64.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Decklink64.dll</Link>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy native frame helper DLL (prefer Release, fall back to Debug) -->
+  <ItemGroup Condition="Exists('..\Screener.Capture.Blackmagic.Native\bin\Release\Screener.Capture.Blackmagic.Native.dll')">
+    <None Include="..\Screener.Capture.Blackmagic.Native\bin\Release\Screener.Capture.Blackmagic.Native.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Screener.Capture.Blackmagic.Native.dll</Link>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('..\Screener.Capture.Blackmagic.Native\bin\Release\Screener.Capture.Blackmagic.Native.dll') And Exists('..\Screener.Capture.Blackmagic.Native\bin\Debug\Screener.Capture.Blackmagic.Native.dll')">
+    <None Include="..\Screener.Capture.Blackmagic.Native\bin\Debug\Screener.Capture.Blackmagic.Native.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Screener.Capture.Blackmagic.Native.dll</Link>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy NDI runtime DLL -->
+  <ItemGroup Condition="Exists('C:\Program Files\NDI\NDI 6 Tools\Runtime\Processing.NDI.Lib.x64.dll')">
+    <None Include="C:\Program Files\NDI\NDI 6 Tools\Runtime\Processing.NDI.Lib.x64.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Processing.NDI.Lib.x64.dll</Link>
+    </None>
+  </ItemGroup>
+
+  <!-- Copy FFmpeg to output directory -->
+  <ItemGroup Condition="Exists('..\..\tools\ffmpeg\ffmpeg.exe')">
+    <None Include="..\..\tools\ffmpeg\ffmpeg.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>tools\ffmpeg\ffmpeg.exe</Link>
+    </None>
+    <None Include="..\..\tools\ffmpeg\ffprobe.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>tools\ffmpeg\ffprobe.exe</Link>
+    </None>
+    <None Include="..\..\tools\ffmpeg\ffplay.exe" Condition="Exists('..\..\tools\ffmpeg\ffplay.exe')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>tools\ffmpeg\ffplay.exe</Link>
+    </None>
+  </ItemGroup>
+</Project>

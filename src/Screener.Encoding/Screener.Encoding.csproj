@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Screener.Encoding</RootNamespace>
+    <AssemblyName>Screener.Encoding</AssemblyName>
+    <Description>FFmpeg-based video encoding pipeline with hardware acceleration</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
+    <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FFMpegCore" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Serilog" />
+  </ItemGroup>
+</Project>

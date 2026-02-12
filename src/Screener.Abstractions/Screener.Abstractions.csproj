@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Screener.Abstractions</RootNamespace>
+    <AssemblyName>Screener.Abstractions</AssemblyName>
+    <Description>Core interfaces and data transfer objects for the Screener video capture application</Description>
+  </PropertyGroup>
+</Project>

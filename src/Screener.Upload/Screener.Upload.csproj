@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Screener.Upload</RootNamespace>
+    <AssemblyName>Screener.Upload</AssemblyName>
+    <Description>Cloud storage providers and upload queue management</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
+    <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Google.Cloud.Storage.V1" />
+    <PackageReference Include="Google.Apis.Drive.v3" />
+    <PackageReference Include="Dropbox.Api" />
+    <PackageReference Include="Minio" />
+    <PackageReference Include="SSH.NET" />
+    <PackageReference Include="FluentFTP" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Polly" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Serilog" />
+  </ItemGroup>
+</Project>
