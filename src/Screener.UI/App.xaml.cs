@@ -14,6 +14,7 @@ using Screener.Abstractions.Output;
 using Screener.Capture.Blackmagic;
 using Screener.Capture.Ndi;
 using Screener.Capture.Srt;
+using Screener.Capture.Virtual;
 using Screener.Clipping;
 using Screener.Core.Capture;
 using Screener.Core.Output;
@@ -138,6 +139,7 @@ public partial class App : Application
         services.AddSingleton<NdiRuntime>();
         services.AddSingleton<NdiDeviceManager>();
         services.AddSingleton<SrtDeviceManager>();
+        services.AddSingleton<VirtualDeviceManager>();
         // Composite device manager aggregates all sources
         services.AddSingleton<IDeviceManager>(sp => new CompositeDeviceManager(
             sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CompositeDeviceManager>>(),
@@ -145,7 +147,8 @@ public partial class App : Application
             {
                 sp.GetRequiredService<DeckLinkDeviceManager>(),
                 sp.GetRequiredService<NdiDeviceManager>(),
-                sp.GetRequiredService<SrtDeviceManager>()
+                sp.GetRequiredService<SrtDeviceManager>(),
+                sp.GetRequiredService<VirtualDeviceManager>()
             }));
 
         // Encoding

@@ -3,15 +3,24 @@ namespace Screener.Golf.Switching;
 /// <summary>
 /// Pure-logic engine that blends two BGRA frames for transitions.
 /// No WPF dependencies — operates entirely on byte arrays.
+///
+/// Callers feed frames via SetSource(index, data, w, h) using fixed slot indices
+/// (e.g., enabled[0] always feeds slot 0, enabled[1] always feeds slot 1).
+/// The engine internally tracks which slot is "program" (A) vs "preview" (B)
+/// via an index swap on cut/transition completion.
 /// </summary>
 public class TransitionEngine
 {
-    private byte[]? _sourceA;
-    private byte[]? _sourceB;
+    // Frame data indexed by source slot (0 or 1)
+    private readonly byte[]?[] _sources = new byte[]?[2];
     private int _width;
     private int _height;
     private double _autoStartTime;
     private bool _autoRunning;
+
+    // When false: slot 0 = A (program), slot 1 = B (preview)
+    // When true:  slot 1 = A (program), slot 0 = B (preview)
+    private bool _swapped;
 
     /// <summary>Active transition type.</summary>
     public TransitionType ActiveTransition { get; private set; } = TransitionType.Cut;
@@ -28,44 +37,40 @@ public class TransitionEngine
     /// <summary>Fired when a transition reaches position 1.0.</summary>
     public event EventHandler? TransitionCompleted;
 
+    // Internal A/B accessors that respect the swap state
+    private byte[]? SourceA => _swapped ? _sources[1] : _sources[0];
+    private byte[]? SourceB => _swapped ? _sources[0] : _sources[1];
+
     /// <summary>
-    /// Set the two source frames for blending.
+    /// Feed a frame into a source slot. Slot indices are fixed per physical input
+    /// (e.g., enabled[0] always uses slot 0, enabled[1] always uses slot 1).
+    /// The engine handles which slot is program vs preview internally.
+    /// </summary>
+    public void SetSource(int index, byte[]? data, int width, int height)
+    {
+        if (index is 0 or 1)
+            _sources[index] = data;
+        _width = width;
+        _height = height;
+    }
+
+    /// <summary>
+    /// Set the two source frames for blending (legacy convenience).
     /// </summary>
     public void SetSources(byte[]? sourceA, byte[]? sourceB, int width, int height)
     {
-        _sourceA = sourceA;
-        _sourceB = sourceB;
+        _sources[0] = sourceA;
+        _sources[1] = sourceB;
         _width = width;
         _height = height;
     }
 
     /// <summary>
-    /// Set only source A (program) without changing source B.
-    /// </summary>
-    public void SetSourceA(byte[]? sourceA, int width, int height)
-    {
-        _sourceA = sourceA;
-        _width = width;
-        _height = height;
-    }
-
-    /// <summary>
-    /// Set only source B (preview/next) without changing source A.
-    /// </summary>
-    public void SetSourceB(byte[]? sourceB, int width, int height)
-    {
-        _sourceB = sourceB;
-        _width = width;
-        _height = height;
-    }
-
-    /// <summary>
-    /// Instant cut — swaps A and B, no blend.
+    /// Instant cut — swaps which slot is program, fires completion.
     /// </summary>
     public void TriggerCut()
     {
-        // Swap sources: B becomes the new A (program)
-        (_sourceA, _sourceB) = (_sourceB, _sourceA);
+        _swapped = !_swapped;
         TransitionPosition = 0;
         IsTransitioning = false;
         _autoRunning = false;
@@ -97,7 +102,7 @@ public class TransitionEngine
     {
         _autoRunning = false;
         TransitionPosition = Math.Clamp(position, 0.0, 1.0);
-        IsTransitioning = TransitionPosition > 0 && TransitionPosition < 1.0;
+        IsTransitioning = TransitionPosition > 0;
 
         if (TransitionPosition >= 1.0)
         {
@@ -128,16 +133,19 @@ public class TransitionEngine
     /// </summary>
     public byte[]? GetProgramFrame()
     {
-        if (_sourceA == null) return _sourceB;
-        if (_sourceB == null) return _sourceA;
+        var a = SourceA;
+        var b = SourceB;
+
+        if (a == null) return b;
+        if (b == null) return a;
 
         // No transition active — return source A (current program)
         if (!IsTransitioning || TransitionPosition <= 0)
-            return _sourceA;
+            return a;
 
         int length = _width * _height * 4;
-        if (_sourceA.Length < length || _sourceB.Length < length)
-            return _sourceA;
+        if (a.Length < length || b.Length < length)
+            return a;
 
         var output = new byte[length];
         double t = TransitionPosition;
@@ -147,15 +155,15 @@ public class TransitionEngine
         switch (ActiveTransition)
         {
             case TransitionType.Dissolve:
-                BlendDissolve(_sourceA, _sourceB, output, length, t, rowBytes);
+                BlendDissolve(a, b, output, length, t, rowBytes);
                 break;
 
             case TransitionType.DipToBlack:
-                BlendDipToBlack(_sourceA, _sourceB, output, length, t, rowBytes);
+                BlendDipToBlack(a, b, output, length, t, rowBytes);
                 break;
 
             default:
-                return _sourceA;
+                return a;
         }
 
         return output;
@@ -163,8 +171,9 @@ public class TransitionEngine
 
     private void CompleteTransition()
     {
-        // Swap: B becomes the new program (A)
-        (_sourceA, _sourceB) = (_sourceB, _sourceA);
+        // Swap which slot is program — the callbacks keep feeding the same slots,
+        // so after the swap, what was preview is now program.
+        _swapped = !_swapped;
         TransitionPosition = 0;
         IsTransitioning = false;
         _autoRunning = false;

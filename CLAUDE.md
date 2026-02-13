@@ -28,13 +28,48 @@
 - **Dark Theme**: Resource dictionaries (BackgroundLevel0-3, AccentBlueBrush, BorderSubtleBrush, etc.)
 
 ## Switcher UI Layout (vMix-style)
-The center column uses a broadcast-style layout inspired by vMix:
-- **Preview monitor** (left) — shows whichever source is NOT on program, green tally border. Binds to `MainViewModel.PreviewSourceImage`.
+The center column uses a compact broadcast-style layout inspired by Chyron/vMix:
+- **Preview monitor** (left) — shows whichever source is NOT on program, green tally border. Binds to `MainViewModel.PreviewSourceImage`. Capped at `MaxHeight="340"` to keep monitors compact.
 - **Transition controls** (center) — vertical `TransitionBar` control (90px wide): CUT/DISS/DIP buttons, duration, AUTO, vertical T-bar slider, KEY toggle. DataContext = `SwitcherViewModel`.
 - **Program monitor** (right) — shows the live transition engine output via `ProgramMonitorControl`, red tally border. Binds to `SwitcherViewModel.ProgramImage`.
-- **Input source strip** (bottom) — scrollable horizontal thumbnails of all `EnabledInputs`. Each card shows preview image, source name, PGM badge. Click selects input.
+- **Input source strip** (middle, `Height="*"`) — scrollable horizontal thumbnails of **all** `InputConfiguration.Inputs` (not just enabled). Each card (180px wide, 16:9 Viewbox) shows preview image, camera number badge (top-left), source name, PVW/PGM badges. Disabled inputs shown at 40% opacity. Left-click selects as preview; right-click opens context menu (Enable for Recording, Set as Preview, Lock Audio to This Source, golf assignments). Drag-and-drop reorders inputs.
 - **Status bar** — input status, auto-cut state, swing counter, session status, CUT buttons (golf mode).
+- **NO SIGNAL** overlay — crosshatch pattern (`NoSignalCrosshatchBrush`) + camera icon (Segoe MDL2 `&#xE714;`) on both preview and program monitors when no signal.
 - `UpdatePreviewSource()` in `MainViewModel` swaps preview based on `ActiveSourceIndex`: when source 0 is program, preview shows source 1 and vice versa.
+
+### Right Panel Sections (5 rows)
+0. Schedule — start time, duration, schedule/manage buttons
+1. Golf Mode — auto-cut toggle, sensitivity, calibration, golfer selector, session controls, diagnostics
+2. Timecode — SMPTE timecode display, source/timezone
+3. Audio Levels — `AudioMetersPanel`, audio lock toggle button in header
+4. Drive Status — drive name, free space, recording time remaining
+
+### Toolbar
+Quality preset, drive selector, stream toggle, NDI/SRT output toggles, golf mode toggle, stream URL panel, **recording controls** (record button, name field, status text).
+
+## TransitionEngine Architecture
+`TransitionEngine` (`src/Screener.Golf/Switching/TransitionEngine.cs`) is a pure-logic BGRA frame blender with no WPF dependencies.
+
+### Source Slot Design
+- Frame data is fed via `SetSource(int index, byte[] data, int w, int h)` using **fixed slot indices** (enabled[0] always feeds slot 0, enabled[1] always feeds slot 1).
+- Internally tracks which slot is "program" (A) vs "preview" (B) via a `_swapped` boolean flag.
+- `SourceA`/`SourceB` properties resolve to `_sources[0]`/`_sources[1]` or vice versa based on `_swapped`.
+- On `TriggerCut()` or `CompleteTransition()`: toggles `_swapped`, fires `TransitionCompleted`.
+- **Key invariant**: BGRA callbacks never change their routing — they always feed the same slot. The engine's internal swap controls which slot is program. This avoids the double-swap bug where both engine swap + callback routing flip would cancel each other out.
+
+### Transition Flow
+1. `SwitcherViewModel.ExecuteCut()` → `_engine.TriggerCut()` → toggles `_swapped`, fires `TransitionCompleted`
+2. `SwitcherViewModel.OnTransitionCompleted` → `_switcherService.CutToSource(newIndex)` (updates `ActiveSourceIndex` for UI state, preview monitor, golf mode tracking)
+3. `GetProgramFrame()` returns `SourceA` (the new program after swap) — no routing change needed in callbacks
+
+## Audio Lock
+Locks audio routing to a specific input so video cuts (manual or golf auto-cuts) don't disrupt the audio feed. Useful when a golfer camera has a microphone but the simulator output does not.
+
+- **State**: `IsAudioLocked` (observable bool), `_audioLockedInput` (private field), `AudioLockedInput` (public read-only)
+- **Commands**: `ToggleAudioLockCommand` (relay command for header button), `LockAudioToSource(input)` / `UnlockAudio()` (public methods for context menu)
+- **Guard**: `OnSelectedInputChanged` skips `DetachAudio`/`AttachAudio` when `IsAudioLocked` is true — covers both manual selection and golf mode auto-cuts (since `OnProgramSourceChanged` → `SelectInput` → `OnSelectedInputChanged`)
+- **Edge case**: If the locked input is disabled, `OnInputPropertyChanged` auto-calls `UnlockAudio()`
+- **UI**: Lock/unlock icon (Segoe MDL2 `&#xE72E;`/`&#xE785;`) in Audio Levels panel header; turns red (`AccentRedBrush`) when locked. Context menu "Lock Audio to This Source" on input thumbnails.
 
 ## Golf Mode Architecture
 - **SwitcherService** — Tracks active program source, fires `ProgramSourceChanged` on cuts

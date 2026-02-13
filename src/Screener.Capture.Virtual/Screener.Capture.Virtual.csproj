@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Screener.Capture.Virtual</RootNamespace>
+    <AssemblyName>Screener.Capture.Virtual</AssemblyName>
+    <Description>Virtual input sources (Black, Still Image) for Screener</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
+    <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" />
+  </ItemGroup>
+</Project>

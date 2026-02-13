@@ -501,7 +501,8 @@
                         <Border Width="6" CornerRadius="3"
                                 Background="{DynamicResource SliderTrackBrush}"
                                 HorizontalAlignment="Center"/>
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True"
+                               Margin="0,9">
                             <Track.DecreaseRepeatButton>
                                 <RepeatButton Style="{StaticResource SliderTrackRepeatButton}"/>
                             </Track.DecreaseRepeatButton>

@@ -13,7 +13,8 @@ public enum VideoConnector
     Composite = 16,
     SVideo = 32,
     NDI = 64,
-    SRT = 128
+    SRT = 128,
+    Virtual = 256
 }
 
 /// <summary>
