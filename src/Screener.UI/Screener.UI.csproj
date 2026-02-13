@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Screener.Scheduling\Screener.Scheduling.csproj" />
     <ProjectReference Include="..\Screener.Capture.Ndi\Screener.Capture.Ndi.csproj" />
     <ProjectReference Include="..\Screener.Capture.Srt\Screener.Capture.Srt.csproj" />
+    <ProjectReference Include="..\Screener.Golf\Screener.Golf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

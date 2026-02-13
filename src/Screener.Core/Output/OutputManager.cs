@@ -18,6 +18,13 @@ public sealed class OutputManager
     public IStreamingService StreamingService => _streamingService;
     public IReadOnlyList<IOutputService> OutputServices => _outputServices;
 
+    /// <summary>
+    /// When set, only frames from this renderer index are pushed to outputs.
+    /// Used by the golf switcher to control which input is "on program".
+    /// null = use the per-renderer _isSelectedForStreaming flag (default behavior).
+    /// </summary>
+    public int? ActiveRendererIndex { get; set; }
+
     public OutputManager(
         ILogger<OutputManager> logger,
         IStreamingService streamingService,

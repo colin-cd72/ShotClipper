@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Screener.Abstractions.Capture;
-using Screener.Abstractions.Streaming;
 using Screener.Core.Output;
 
 namespace Screener.UI.ViewModels;
@@ -12,7 +11,7 @@ namespace Screener.UI.ViewModels;
 /// <summary>
 /// Lightweight per-input frame renderer. Subscribes to a capture device's video frames
 /// and produces a WriteableBitmap preview at half or quarter resolution.
-/// Reuses the static YUV->RGB lookup tables from VideoPreviewViewModel.
+/// Reuses the static YUV->RGB lookup tables from YuvConversion.
 /// </summary>
 public class InputPreviewRenderer : IDisposable
 {
@@ -43,6 +42,9 @@ public class InputPreviewRenderer : IDisposable
     private OutputManager? _outputManager;
     private bool _isSelectedForStreaming;
 
+    // Golf auto-cut frame analysis callback
+    private Action<ReadOnlyMemory<byte>, int, int>? _frameAnalysisCallback;
+
     // The InputViewModel whose PreviewImage we update
     private readonly InputViewModel _input;
 
@@ -57,11 +59,21 @@ public class InputPreviewRenderer : IDisposable
         _isSelectedForStreaming = isSelected;
     }
 
-    [Obsolete("Use SetOutputManager instead")]
-    public void SetStreamingService(IStreamingService? service, bool isSelected)
+    /// <summary>
+    /// Set the streaming selection at runtime (used by the golf switcher).
+    /// </summary>
+    public void SetSelectedForStreaming(bool isSelected)
     {
-        // Backwards compat - noop if OutputManager is already set
         _isSelectedForStreaming = isSelected;
+    }
+
+    /// <summary>
+    /// Set a callback that receives raw UYVY frame data for analysis (e.g., auto-cut detection).
+    /// The callback receives (frameData, width, height).
+    /// </summary>
+    public void SetFrameAnalysisCallback(Action<ReadOnlyMemory<byte>, int, int>? callback)
+    {
+        _frameAnalysisCallback = callback;
     }
 
     /// <summary>
@@ -86,7 +98,7 @@ public class InputPreviewRenderer : IDisposable
         _device.VideoFrameReceived += OnVideoFrameReceived;
         _device.StatusChanged += OnStatusChanged;
 
-        // Select video mode (same logic as VideoPreviewViewModel)
+        // Select video mode (prefer 1080p59.94)
         var mode = _device.SupportedVideoModes
             .FirstOrDefault(m => m.Width == 1920 && m.Height == 1080 && !m.IsInterlaced && m.FrameRate.Value > 59.9 && m.FrameRate.Value < 60.0)
             ?? _device.SupportedVideoModes.FirstOrDefault(m => m.Width == 1920 && m.Height == 1080 && !m.IsInterlaced && m.FrameRate.Value >= 59.0)
@@ -178,6 +190,19 @@ public class InputPreviewRenderer : IDisposable
             _ = _outputManager.PushFrameToAllAsync(e.FrameData, e.Mode, e.Timestamp);
         }
 
+        // Golf auto-cut frame analysis hook (~15fps = every 4th callback)
+        if (_frameAnalysisCallback != null && _callbackCount % 4 == 0)
+        {
+            try
+            {
+                _frameAnalysisCallback(e.FrameData, e.Mode.Width, e.Mode.Height);
+            }
+            catch
+            {
+                // Don't let analysis errors affect preview
+            }
+        }
+
         // Accept every 2nd frame: 59.94fps -> ~30fps
         if (_callbackCount % 2 != 0) return;
 
@@ -196,7 +221,7 @@ public class InputPreviewRenderer : IDisposable
             // Reinitialize if format changed
             if (e.Mode.Width / _resDivisor != _previewWidth || e.Mode.Height / _resDivisor != _previewHeight)
             {
-                VideoPreviewViewModel.ResetVancDetection();
+                YuvConversion.ResetVancDetection();
                 InitializePreviewBitmap(e.Mode.Width, e.Mode.Height);
             }
 
@@ -208,7 +233,7 @@ public class InputPreviewRenderer : IDisposable
             var frameBytes = segment.Array;
 
             // Ensure VANC geometry is detected (shared static state)
-            VideoPreviewViewModel.EnsureVancDetected(frameBytes, srcRowBytes, e.Mode.Height);
+            YuvConversion.EnsureVancDetected(frameBytes, srcRowBytes, e.Mode.Height);
 
             int prevW = _previewWidth;
             int prevH = _previewHeight;
@@ -236,7 +261,7 @@ public class InputPreviewRenderer : IDisposable
                         prevW, prevH, localSrcRowBytes, localDiv);
 
                     // Clear bottom rows if effectiveHeight < dstHeight due to VANC
-                    int vancRows = Math.Max(0, VideoPreviewViewModel.DetectedVancRows);
+                    int vancRows = Math.Max(0, YuvConversion.DetectedVancRows);
                     int effectiveHeight = Math.Min(prevH, (frameHeight - vancRows) / localDiv);
                     if (effectiveHeight < prevH)
                     {
@@ -274,15 +299,15 @@ public class InputPreviewRenderer : IDisposable
     /// <summary>
     /// Convert UYVY to BGRA at 1/divisor resolution.
     /// divisor=2: half-res (960x540), divisor=4: quarter-res (480x270).
-    /// Reuses the static YUV->RGB lookup tables from VideoPreviewViewModel.
+    /// Reuses the static YUV->RGB lookup tables from YuvConversion.
     /// </summary>
     internal static void ConvertYuv422Scaled(byte[] yuv, byte[] rgb,
         int srcWidth, int srcHeight, int dstWidth, int dstHeight,
         int srcRowBytes, int divisor)
     {
         int destRowBytes = dstWidth * 4;
-        int vancRows = Math.Max(0, VideoPreviewViewModel.DetectedVancRows);
-        int hancBytes = VideoPreviewViewModel.DetectedHancBytes;
+        int vancRows = Math.Max(0, YuvConversion.DetectedVancRows);
+        int hancBytes = YuvConversion.DetectedHancBytes;
         int effectiveHeight = Math.Min(dstHeight, (srcHeight - vancRows) / divisor);
 
         // Bytes per dest pixel pair in source: divisor UYVY groups x 4 bytes each
@@ -294,13 +319,13 @@ public class InputPreviewRenderer : IDisposable
         int maxDstPairs = Math.Min(dstWidth / 2, Math.Max(0, (availableSrcBytes - y1Offset - 1) / srcBytesPerDstPair));
 
         // Cache table references for inner loop performance
-        var ytoc = VideoPreviewViewModel.YtoC;
-        var utog = VideoPreviewViewModel.UtoG;
-        var utob = VideoPreviewViewModel.UtoB;
-        var vtor = VideoPreviewViewModel.VtoR;
-        var vtog = VideoPreviewViewModel.VtoG;
-        var clamp = VideoPreviewViewModel.ClampTable;
-        int clampOff = VideoPreviewViewModel.ClampOffset;
+        var ytoc = YuvConversion.YtoC;
+        var utog = YuvConversion.UtoG;
+        var utob = YuvConversion.UtoB;
+        var vtor = YuvConversion.VtoR;
+        var vtog = YuvConversion.VtoG;
+        var clamp = YuvConversion.ClampTable;
+        int clampOff = YuvConversion.ClampOffset;
 
         Parallel.For(0, effectiveHeight, dstRow =>
         {

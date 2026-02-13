@@ -125,6 +125,60 @@ public sealed class DatabaseContext : IAsyncDisposable
                 updated_at TEXT NOT NULL
             );
 
+            -- Golf: Golfer Profiles
+            CREATE TABLE IF NOT EXISTS golfers (
+                id TEXT PRIMARY KEY,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                display_name TEXT,
+                handicap REAL,
+                photo_path TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            -- Golf: Sessions
+            CREATE TABLE IF NOT EXISTS golf_sessions (
+                id TEXT PRIMARY KEY,
+                golfer_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                source1_recording_path TEXT,
+                source2_recording_path TEXT,
+                total_swings INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (golfer_id) REFERENCES golfers(id)
+            );
+
+            -- Golf: Swing Sequences
+            CREATE TABLE IF NOT EXISTS swing_sequences (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                golfer_id TEXT NOT NULL,
+                sequence_number INTEGER NOT NULL,
+                in_point_ticks INTEGER NOT NULL,
+                out_point_ticks INTEGER,
+                detection_method TEXT NOT NULL,
+                exported_clip_path TEXT,
+                export_status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES golf_sessions(id),
+                FOREIGN KEY (golfer_id) REFERENCES golfers(id)
+            );
+
+            -- Golf: Overlay Configurations
+            CREATE TABLE IF NOT EXISTS overlay_configs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                config_json TEXT NOT NULL,
+                asset_path TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             -- Create indexes
             CREATE INDEX IF NOT EXISTS idx_schedules_start_time ON schedules(start_time);
             CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(is_enabled);
@@ -132,6 +186,8 @@ public sealed class DatabaseContext : IAsyncDisposable
             CREATE INDEX IF NOT EXISTS idx_recordings_start_time ON recordings(start_time);
             CREATE INDEX IF NOT EXISTS idx_clips_recording ON clips(recording_id);
             CREATE INDEX IF NOT EXISTS idx_markers_recording ON markers(recording_id);
+            CREATE INDEX IF NOT EXISTS idx_golf_sessions_golfer ON golf_sessions(golfer_id);
+            CREATE INDEX IF NOT EXISTS idx_swing_sequences_session ON swing_sequences(session_id);
             """;
 
         await _connection!.ExecuteAsync(createTables);

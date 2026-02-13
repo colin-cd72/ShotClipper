@@ -30,6 +30,8 @@ using Screener.Upload;
 using Screener.Upload.Providers;
 using Screener.Core.Persistence;
 using Screener.Core.Settings;
+using Screener.Golf.Detection;
+using Screener.Golf.Switching;
 using Serilog;
 
 namespace Screener.UI;
@@ -126,7 +128,6 @@ public partial class App : Application
         services.AddSingleton<HardwareAccelerator>();
 
         // Preview
-        services.AddSingleton<Screener.Preview.D3DPreviewRenderer>();
         services.AddSingleton<Screener.Preview.AudioPreviewService>();
 
         // Capture - individual device managers
@@ -188,6 +189,12 @@ public partial class App : Application
         // Scheduling
         services.AddSingleton<ISchedulingService, SchedulingService>();
 
+        // Golf Mode
+        services.AddSingleton<SwitcherService>();
+        services.AddSingleton<AutoCutService>();
+        services.AddSingleton<GolfSession>();
+        services.AddSingleton<SequenceRecorder>();
+
         // ViewModels
         services.AddTransient<MainViewModel>();
         services.AddTransient<RecordingControlsViewModel>();
@@ -196,7 +203,6 @@ public partial class App : Application
         services.AddTransient<DriveStatusViewModel>();
         services.AddTransient<ClipBinViewModel>();
         services.AddTransient<UploadQueueViewModel>();
-        services.AddTransient<VideoPreviewViewModel>();
         services.AddTransient<InputConfigurationViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<SchedulerViewModel>();

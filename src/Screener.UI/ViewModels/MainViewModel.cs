@@ -15,6 +15,9 @@ using Screener.Abstractions.Streaming;
 using Screener.Abstractions.Timecode;
 using Screener.Core.Output;
 using Screener.Core.Settings;
+using Screener.Golf.Detection;
+using Screener.Golf.Models;
+using Screener.Golf.Switching;
 using Screener.Preview;
 using Screener.Scheduling;
 using Screener.UI.Views;
@@ -39,6 +42,13 @@ public partial class MainViewModel : ObservableObject
     private readonly Dictionary<string, InputPreviewRenderer> _previewRenderers = new();
     private ICaptureDevice? _audioDevice;
 
+    // Golf mode services
+    private readonly SwitcherService _switcherService;
+    private readonly AutoCutService _autoCutService;
+    private readonly GolfSession _golfSession;
+    private readonly SequenceRecorder _sequenceRecorder;
+    private System.Windows.Threading.DispatcherTimer? _autoCutTickTimer;
+
     // Child ViewModels
     public RecordingControlsViewModel RecordingControls { get; }
     public TimecodeViewModel Timecode { get; }
@@ -46,7 +56,6 @@ public partial class MainViewModel : ObservableObject
     public DriveStatusViewModel DriveStatus { get; }
     public ClipBinViewModel ClipBin { get; }
     public UploadQueueViewModel UploadQueue { get; }
-    public VideoPreviewViewModel VideoPreview { get; }
     public InputConfigurationViewModel InputConfiguration { get; }
 
     // Recording State
@@ -149,6 +158,37 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string? _srtOutputStatus;
 
+    // Golf Mode
+    [ObservableProperty]
+    private bool _isGolfModeEnabled;
+
+    [ObservableProperty]
+    private bool _isAutoCutEnabled;
+
+    [ObservableProperty]
+    private int _activeSourceIndex;
+
+    [ObservableProperty]
+    private string _autoCutStateText = "Disabled";
+
+    [ObservableProperty]
+    private int _swingCount;
+
+    [ObservableProperty]
+    private bool _isSessionActive;
+
+    [ObservableProperty]
+    private string? _sessionGolferName;
+
+    [ObservableProperty]
+    private bool _isIdleCalibrated;
+
+    [ObservableProperty]
+    private double _motionLevel;
+
+    [ObservableProperty]
+    private double _autoCutSensitivity = 4.0;
+
     // Per-input schedule state
     private readonly Dictionary<string, InputScheduleState> _inputScheduleStates = new();
 
@@ -208,11 +248,14 @@ public partial class MainViewModel : ObservableObject
         DriveStatusViewModel driveStatus,
         ClipBinViewModel clipBin,
         UploadQueueViewModel uploadQueue,
-        VideoPreviewViewModel videoPreview,
         InputConfigurationViewModel inputConfiguration,
         AudioPreviewService audioPreviewService,
         IStreamingService streamingService,
-        OutputManager outputManager)
+        OutputManager outputManager,
+        SwitcherService switcherService,
+        AutoCutService autoCutService,
+        GolfSession golfSession,
+        SequenceRecorder sequenceRecorder)
     {
         _serviceProvider = serviceProvider;
         _deviceManager = deviceManager;
@@ -223,6 +266,10 @@ public partial class MainViewModel : ObservableObject
         _audioPreviewService = audioPreviewService;
         _streamingService = streamingService;
         _outputManager = outputManager;
+        _switcherService = switcherService;
+        _autoCutService = autoCutService;
+        _golfSession = golfSession;
+        _sequenceRecorder = sequenceRecorder;
 
         // Check NDI availability
         var ndiOutput = _outputManager.GetOutput("ndi-output");
@@ -233,7 +280,6 @@ public partial class MainViewModel : ObservableObject
         DriveStatus = driveStatus;
         ClipBin = clipBin;
         UploadQueue = uploadQueue;
-        VideoPreview = videoPreview;
         InputConfiguration = inputConfiguration;
 
         // Subscribe to recording service events
@@ -258,6 +304,16 @@ public partial class MainViewModel : ObservableObject
         {
             input.PropertyChanged += OnInputPropertyChanged;
         }
+
+        // Wire up golf mode events
+        _switcherService.ProgramSourceChanged += OnProgramSourceChanged;
+        _autoCutService.CutTriggered += OnAutoCutTriggered;
+        _autoCutService.StateChanged += OnAutoCutStateChanged;
+        _golfSession.SwingCountChanged += (_, count) =>
+            Application.Current.Dispatcher.Invoke(() => SwingCount = count);
+        _sequenceRecorder.SequenceStarted += (_, seq) =>
+            _golfSession.IncrementSwingCount();
+        _sequenceRecorder.SequenceCompleted += OnSequenceCompleted;
 
         // Initialize available drives
         RefreshDrives();
@@ -1217,6 +1273,241 @@ public partial class MainViewModel : ObservableObject
     private void ToggleSrtOutput()
     {
         IsSrtOutputActive = !IsSrtOutputActive;
+    }
+
+    // ========== Golf Mode Commands ==========
+
+    [RelayCommand]
+    private void CutToSource1()
+    {
+        if (!IsGolfModeEnabled) return;
+        _switcherService.CutToSource(0, "manual");
+    }
+
+    [RelayCommand]
+    private void CutToSource2()
+    {
+        if (!IsGolfModeEnabled) return;
+        _switcherService.CutToSource(1, "manual");
+    }
+
+    partial void OnIsGolfModeEnabledChanged(bool value)
+    {
+        _switcherService.IsGolfModeEnabled = value;
+        if (value)
+        {
+            _logger.LogInformation("Golf mode enabled");
+            // Start auto-cut tick timer
+            _autoCutTickTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            _autoCutTickTimer.Tick += (s, e) => _autoCutService.Tick();
+            _autoCutTickTimer.Start();
+            WireUpGolfFrameCallbacks();
+        }
+        else
+        {
+            _logger.LogInformation("Golf mode disabled");
+            _autoCutTickTimer?.Stop();
+            _autoCutTickTimer = null;
+            IsAutoCutEnabled = false;
+            ClearGolfFrameCallbacks();
+        }
+    }
+
+    partial void OnIsAutoCutEnabledChanged(bool value)
+    {
+        if (value)
+            _autoCutService.Enable();
+        else
+            _autoCutService.Disable();
+    }
+
+    partial void OnAutoCutSensitivityChanged(double value)
+    {
+        var config = _autoCutService.Configuration;
+        config.SwingSpikeMultiplier = value;
+        _autoCutService.UpdateConfiguration(config);
+    }
+
+    [RelayCommand]
+    private void CalibrateIdle()
+    {
+        var simInput = InputConfiguration.GetInputByGolfRole(InputRole.SimulatorOutput);
+        if (simInput?.PreviewRenderer?.Device == null)
+        {
+            _logger.LogWarning("Cannot calibrate: no simulator input assigned");
+            return;
+        }
+
+        // The calibration will happen on the next frame from Source 2
+        // Set a one-shot callback to capture the idle frame
+        _calibrateOnNextFrame = true;
+        _logger.LogInformation("Calibration pending on next simulator frame...");
+    }
+
+    private volatile bool _calibrateOnNextFrame;
+
+    [RelayCommand]
+    private void StartGolfSession()
+    {
+        if (IsSessionActive) return;
+
+        var session = _golfSession.StartSession();
+        _sequenceRecorder.StartSession(session.Id);
+
+        IsSessionActive = true;
+        SessionGolferName = session.GolferDisplayName;
+        SwingCount = 0;
+
+        _logger.LogInformation("Golf session started");
+    }
+
+    [RelayCommand]
+    private void StopGolfSession()
+    {
+        if (!IsSessionActive) return;
+
+        _sequenceRecorder.StopSession();
+        var session = _golfSession.EndSession();
+
+        IsSessionActive = false;
+        IsAutoCutEnabled = false;
+
+        _logger.LogInformation("Golf session ended. Swings: {Count}", session?.TotalSwings ?? 0);
+    }
+
+    [RelayCommand]
+    private void AssignGolferCamera(InputViewModel input)
+    {
+        // Clear any existing golfer camera assignment
+        foreach (var inp in InputConfiguration.Inputs)
+        {
+            if (inp.GolfRole == InputRole.GolferCamera)
+                inp.GolfRole = InputRole.Unassigned;
+        }
+        input.GolfRole = InputRole.GolferCamera;
+        WireUpGolfFrameCallbacks();
+        _logger.LogInformation("Golfer camera assigned to {Input}", input.ShortName);
+    }
+
+    [RelayCommand]
+    private void AssignSimulatorOutput(InputViewModel input)
+    {
+        // Clear any existing simulator assignment
+        foreach (var inp in InputConfiguration.Inputs)
+        {
+            if (inp.GolfRole == InputRole.SimulatorOutput)
+                inp.GolfRole = InputRole.Unassigned;
+        }
+        input.GolfRole = InputRole.SimulatorOutput;
+        WireUpGolfFrameCallbacks();
+        _logger.LogInformation("Simulator output assigned to {Input}", input.ShortName);
+    }
+
+    private void WireUpGolfFrameCallbacks()
+    {
+        ClearGolfFrameCallbacks();
+
+        var golferInput = InputConfiguration.GetInputByGolfRole(InputRole.GolferCamera);
+        var simInput = InputConfiguration.GetInputByGolfRole(InputRole.SimulatorOutput);
+
+        if (golferInput?.PreviewRenderer != null)
+        {
+            golferInput.PreviewRenderer.SetFrameAnalysisCallback((data, w, h) =>
+            {
+                _autoCutService.ProcessSource1Frame(data, w, h);
+                // Update motion level for diagnostic display
+                Application.Current?.Dispatcher.BeginInvoke(() =>
+                    MotionLevel = _autoCutService.SwingDetector.LastSad);
+            });
+        }
+
+        if (simInput?.PreviewRenderer != null)
+        {
+            simInput.PreviewRenderer.SetFrameAnalysisCallback((data, w, h) =>
+            {
+                // Handle calibration
+                if (_calibrateOnNextFrame)
+                {
+                    _calibrateOnNextFrame = false;
+                    _autoCutService.CalibrateIdleReference(data, w, h);
+                    Application.Current?.Dispatcher.BeginInvoke(() => IsIdleCalibrated = true);
+                }
+
+                _autoCutService.ProcessSource2Frame(data, w, h);
+            });
+        }
+    }
+
+    private void ClearGolfFrameCallbacks()
+    {
+        foreach (var renderer in _previewRenderers.Values)
+        {
+            renderer.SetFrameAnalysisCallback(null);
+        }
+    }
+
+    private void OnProgramSourceChanged(object? sender, ProgramSourceChangedEventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            ActiveSourceIndex = e.NewSourceIndex;
+
+            // Switch the selected input to match the active program source
+            var targetInput = InputConfiguration.GetGolfSource(e.NewSourceIndex);
+            if (targetInput != null)
+            {
+                InputConfiguration.SelectInput(targetInput);
+            }
+
+            // Update streaming selection on renderers
+            foreach (var kvp in _previewRenderers)
+            {
+                var input = InputConfiguration.Inputs.FirstOrDefault(i => i.DeviceId == kvp.Key);
+                if (input != null)
+                {
+                    bool isProgram = input.GolfRole == InputRole.GolferCamera && e.NewSourceIndex == 0
+                                  || input.GolfRole == InputRole.SimulatorOutput && e.NewSourceIndex == 1;
+                    kvp.Value.SetSelectedForStreaming(isProgram);
+                }
+            }
+        });
+    }
+
+    private void OnAutoCutTriggered(object? sender, AutoCutEventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            _switcherService.CutToSource(e.TargetSourceIndex, e.Reason);
+        });
+    }
+
+    private void OnAutoCutStateChanged(object? sender, AutoCutState state)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            AutoCutStateText = state switch
+            {
+                AutoCutState.WaitingForSwing => "Waiting",
+                AutoCutState.SwingDetected => "Swing!",
+                AutoCutState.FollowingShot => "Following",
+                AutoCutState.ResetDetected => "Landing",
+                AutoCutState.Cooldown => "Cooldown",
+                AutoCutState.Disabled => "Disabled",
+                _ => "Unknown"
+            };
+        });
+    }
+
+    private void OnSequenceCompleted(object? sender, SwingSequence sequence)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            _logger.LogInformation("Swing #{Num} ready for export (Duration: {Duration:F1}s)",
+                sequence.SequenceNumber, sequence.Duration?.TotalSeconds ?? 0);
+        });
     }
 
     [RelayCommand]

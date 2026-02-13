@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
 using Screener.Abstractions.Capture;
 using Screener.Abstractions.Recording;
+using Screener.Golf.Models;
 
 namespace Screener.UI.ViewModels;
 
@@ -99,6 +100,23 @@ public partial class InputConfigurationViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Get the input assigned to a specific golf role.
+    /// </summary>
+    public InputViewModel? GetInputByGolfRole(InputRole role)
+    {
+        return Inputs.FirstOrDefault(i => i.GolfRole == role);
+    }
+
+    /// <summary>
+    /// Get the input at a specific golf source index (0 = GolferCamera, 1 = SimulatorOutput).
+    /// </summary>
+    public InputViewModel? GetGolfSource(int sourceIndex)
+    {
+        var role = sourceIndex == 0 ? InputRole.GolferCamera : InputRole.SimulatorOutput;
+        return GetInputByGolfRole(role);
+    }
+
+    /// <summary>
     /// Updates signal status for all inputs.
     /// </summary>
     public void UpdateSignalStatus()
@@ -156,6 +174,12 @@ public partial class InputViewModel : ObservableObject
 
     [ObservableProperty]
     private string _formatDescription = string.Empty;
+
+    /// <summary>
+    /// Golf mode role assignment for this input.
+    /// </summary>
+    [ObservableProperty]
+    private InputRole _golfRole = InputRole.Unassigned;
 
     /// <summary>
     /// Internal renderer managed by MainViewModel.
