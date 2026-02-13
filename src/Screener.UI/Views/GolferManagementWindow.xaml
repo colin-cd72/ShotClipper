@@ -49,22 +49,6 @@
                                     <TextBlock Text="{Binding EffectiveDisplayName}"
                                                FontWeight="SemiBold" FontSize="12"
                                                Foreground="{DynamicResource TextPrimaryBrush}"/>
-                                    <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="No handicap"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Handicap}" Value="{x:Null}">
-                                                        <Setter Property="Text" Value="No handicap"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding Handicap, StringFormat='Handicap: {0:F1}'}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Visibility="{Binding Handicap, Converter={StaticResource NullToVisibilityConverter}}"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -114,15 +98,6 @@
                                Foreground="{DynamicResource TextSecondaryBrush}"
                                FontSize="11" Margin="0,0,0,4"/>
                     <TextBox Text="{Binding EditDisplayName, UpdateSourceTrigger=PropertyChanged}"
-                             Background="{DynamicResource BackgroundLevel0Brush}"
-                             Foreground="{DynamicResource TextPrimaryBrush}"
-                             BorderBrush="{DynamicResource BorderSubtleBrush}"
-                             Padding="8,6" Margin="0,0,0,12"/>
-
-                    <TextBlock Text="Handicap"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               FontSize="11" Margin="0,0,0,4"/>
-                    <TextBox Text="{Binding EditHandicap, UpdateSourceTrigger=PropertyChanged}"
                              Background="{DynamicResource BackgroundLevel0Brush}"
                              Foreground="{DynamicResource TextPrimaryBrush}"
                              BorderBrush="{DynamicResource BorderSubtleBrush}"

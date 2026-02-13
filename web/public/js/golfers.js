@@ -19,7 +19,6 @@ const GolfersPage = {
                         <tr>
                             <th>Name</th>
                             <th>Display Name</th>
-                            <th>Handicap</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -37,8 +36,6 @@ const GolfersPage = {
                         <input type="text" id="golfer-last" required>
                         <label>Display Name (optional)</label>
                         <input type="text" id="golfer-display">
-                        <label>Handicap</label>
-                        <input type="number" id="golfer-handicap" step="0.1">
                         <input type="hidden" id="golfer-edit-id">
                         <div style="display:flex;gap:8px;justify-content:flex-end">
                             <button type="button" class="btn" id="golfer-cancel">Cancel</button>
@@ -82,7 +79,7 @@ const GolfersPage = {
             this.renderTable();
         } catch (err) {
             document.getElementById('golfers-table').innerHTML =
-                `<tr><td colspan="4" style="color:var(--text-secondary)">${err.message}</td></tr>`;
+                `<tr><td colspan="3" style="color:var(--text-secondary)">${err.message}</td></tr>`;
         }
     },
 
@@ -90,7 +87,7 @@ const GolfersPage = {
         const tbody = document.getElementById('golfers-table');
 
         if (this.golfers.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-secondary)">No golfers yet.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-secondary)">No golfers yet.</td></tr>';
             return;
         }
 
@@ -98,7 +95,6 @@ const GolfersPage = {
             <tr>
                 <td>${g.firstName} ${g.lastName}</td>
                 <td>${g.displayName || '--'}</td>
-                <td>${g.handicap != null ? g.handicap : '--'}</td>
                 <td>
                     <button class="btn btn-sm" onclick="GolfersPage.editGolfer('${g.id}')">Edit</button>
                     <button class="btn btn-sm btn-danger" onclick="GolfersPage.deleteGolfer('${g.id}')">Delete</button>
@@ -112,7 +108,6 @@ const GolfersPage = {
         document.getElementById('golfer-first').value = golfer?.firstName || '';
         document.getElementById('golfer-last').value = golfer?.lastName || '';
         document.getElementById('golfer-display').value = golfer?.displayName || '';
-        document.getElementById('golfer-handicap').value = golfer?.handicap || '';
         document.getElementById('golfer-edit-id').value = golfer?.id || '';
         document.getElementById('golfer-modal').classList.remove('hidden');
     },
@@ -134,7 +129,6 @@ const GolfersPage = {
             firstName: document.getElementById('golfer-first').value,
             lastName: document.getElementById('golfer-last').value,
             displayName: document.getElementById('golfer-display').value || null,
-            handicap: document.getElementById('golfer-handicap').value ? parseFloat(document.getElementById('golfer-handicap').value) : null,
             isActive: true
         };
 

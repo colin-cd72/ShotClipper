@@ -30,9 +30,6 @@ public partial class GolferManagementViewModel : ObservableObject
     [ObservableProperty]
     private string _editDisplayName = string.Empty;
 
-    [ObservableProperty]
-    private string _editHandicap = string.Empty;
-
     /// <summary>Fired to close the dialog window.</summary>
     public event EventHandler<bool>? CloseRequested;
 
@@ -68,14 +65,12 @@ public partial class GolferManagementViewModel : ObservableObject
             EditFirstName = value.FirstName;
             EditLastName = value.LastName;
             EditDisplayName = value.DisplayName ?? string.Empty;
-            EditHandicap = value.Handicap?.ToString("F1") ?? string.Empty;
         }
         else
         {
             EditFirstName = string.Empty;
             EditLastName = string.Empty;
             EditDisplayName = string.Empty;
-            EditHandicap = string.Empty;
         }
     }
 
@@ -101,7 +96,6 @@ public partial class GolferManagementViewModel : ObservableObject
             SelectedGolfer.FirstName = EditFirstName;
             SelectedGolfer.LastName = EditLastName;
             SelectedGolfer.DisplayName = string.IsNullOrWhiteSpace(EditDisplayName) ? null : EditDisplayName;
-            SelectedGolfer.Handicap = double.TryParse(EditHandicap, out var h) ? h : null;
 
             // Check if this golfer exists in DB already
             var existing = await _golferRepository.GetByIdAsync(SelectedGolfer.Id);

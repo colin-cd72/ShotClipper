@@ -9,7 +9,6 @@ public class GolferProfile
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string? DisplayName { get; set; }
-    public double? Handicap { get; set; }
     public string? PhotoPath { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

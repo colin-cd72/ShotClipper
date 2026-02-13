@@ -44,6 +44,7 @@ public sealed class WebRtcStreamingService : IStreamingService
     private HttpListener? _httpListener;
     private StreamingConfiguration? _config;
     private StreamingState _state = StreamingState.Stopped;
+    private bool _listenerRunning;
     private CancellationTokenSource? _cts;
     private Task? _listenerTask;
     private DateTimeOffset _startedAt;
@@ -102,9 +103,61 @@ public sealed class WebRtcStreamingService : IStreamingService
         _isStreamingProvider = isStreamingProvider;
     }
 
+    /// <summary>
+    /// Start just the HTTP listener for API requests and WebSocket connections,
+    /// without activating video streaming. Call this on app startup so the panel
+    /// relay can forward API requests even when streaming is off.
+    /// </summary>
+    public async Task StartListenerAsync(StreamingConfiguration config)
+    {
+        if (_listenerRunning)
+            return;
+
+        _config = config;
+
+        var localIp = GetLocalIpAddress();
+        string boundHost;
+
+        _httpListener = new HttpListener();
+        _httpListener.Prefixes.Add($"http://+:{config.SignalingPort}/");
+
+        try
+        {
+            _httpListener.Start();
+            boundHost = localIp;
+        }
+        catch (HttpListenerException ex) when (ex.ErrorCode == 5) // Access denied
+        {
+            // Try binding to specific IP so LAN clients can connect
+            _httpListener = new HttpListener();
+            try
+            {
+                _httpListener.Prefixes.Add($"http://{localIp}:{config.SignalingPort}/");
+                _httpListener.Start();
+                boundHost = localIp;
+            }
+            catch (HttpListenerException)
+            {
+                // Fall back to localhost only
+                _httpListener = new HttpListener();
+                _httpListener.Prefixes.Add($"http://localhost:{config.SignalingPort}/");
+                _httpListener.Start();
+                boundHost = "localhost";
+            }
+        }
+
+        SignalingUri = new Uri($"http://{boundHost}:{config.SignalingPort}/stream");
+
+        _cts = new CancellationTokenSource();
+        _listenerTask = AcceptConnectionsAsync(_cts.Token);
+        _listenerRunning = true;
+
+        _logger.LogInformation("HTTP listener started at {Uri}", SignalingUri);
+    }
+
     public async Task StartAsync(StreamingConfiguration config, CancellationToken ct = default)
     {
-        if (_state != StreamingState.Stopped)
+        if (_state == StreamingState.Running)
             throw new InvalidOperationException($"Cannot start in state {_state}");
 
         _state = StreamingState.Starting;
@@ -112,41 +165,8 @@ public sealed class WebRtcStreamingService : IStreamingService
 
         try
         {
-            var localIp = GetLocalIpAddress();
-            string boundHost;
-
-            _httpListener = new HttpListener();
-            _httpListener.Prefixes.Add($"http://+:{config.SignalingPort}/");
-
-            try
-            {
-                _httpListener.Start();
-                boundHost = localIp;
-            }
-            catch (HttpListenerException ex) when (ex.ErrorCode == 5) // Access denied
-            {
-                // Try binding to specific IP so LAN clients can connect
-                _httpListener = new HttpListener();
-                try
-                {
-                    _httpListener.Prefixes.Add($"http://{localIp}:{config.SignalingPort}/");
-                    _httpListener.Start();
-                    boundHost = localIp;
-                }
-                catch (HttpListenerException)
-                {
-                    // Fall back to localhost only
-                    _httpListener = new HttpListener();
-                    _httpListener.Prefixes.Add($"http://localhost:{config.SignalingPort}/");
-                    _httpListener.Start();
-                    boundHost = "localhost";
-                }
-            }
-
-            SignalingUri = new Uri($"http://{boundHost}:{config.SignalingPort}/stream");
-
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            _listenerTask = AcceptConnectionsAsync(_cts.Token);
+            // Start the HTTP listener if not already running
+            await StartListenerAsync(config);
 
             _state = StreamingState.Running;
             _startedAt = DateTimeOffset.UtcNow;
@@ -166,11 +186,29 @@ public sealed class WebRtcStreamingService : IStreamingService
         if (_state != StreamingState.Running && _state != StreamingState.Error)
             return;
 
-        _state = StreamingState.Stopping;
+        // Disconnect all streaming viewers
+        foreach (var viewer in _viewers.Values)
+        {
+            await viewer.DisconnectAsync();
+        }
+        _viewers.Clear();
+
+        // Mark streaming as stopped but keep HTTP listener running for API relay
+        _state = StreamingState.Stopped;
+
+        _logger.LogInformation("WebRTC streaming stopped (listener remains active)");
+    }
+
+    /// <summary>
+    /// Fully shut down the HTTP listener. Called on app exit.
+    /// </summary>
+    public async Task StopListenerAsync()
+    {
+        _state = StreamingState.Stopped;
+        _listenerRunning = false;
 
         _cts?.Cancel();
 
-        // Disconnect all viewers
         foreach (var viewer in _viewers.Values)
         {
             await viewer.DisconnectAsync();
@@ -186,9 +224,8 @@ public sealed class WebRtcStreamingService : IStreamingService
         }
 
         SignalingUri = null;
-        _state = StreamingState.Stopped;
 
-        _logger.LogInformation("WebRTC streaming stopped");
+        _logger.LogInformation("HTTP listener stopped");
     }
 
     // Panel relay (outbound push to cloud panel)
@@ -210,7 +247,7 @@ public sealed class WebRtcStreamingService : IStreamingService
     public async Task PushFrameAsync(ReadOnlyMemory<byte> frameData, TimeSpan timestamp, CancellationToken ct = default)
     {
         bool hasLocalViewers = _state == StreamingState.Running && !_viewers.IsEmpty && _config != null;
-        bool hasPanelRelay = _panelRelay?.IsConnected == true;
+        bool hasPanelRelay = _state == StreamingState.Running && _panelRelay?.IsConnected == true;
 
         if (!hasLocalViewers && !hasPanelRelay)
             return;
@@ -1347,7 +1384,7 @@ public sealed class WebRtcStreamingService : IStreamingService
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync();
+        await StopListenerAsync();
     }
 }
 

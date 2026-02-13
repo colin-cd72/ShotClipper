@@ -443,6 +443,101 @@ public partial class MainViewModel : ObservableObject
 
         // Start multi-view preview for enabled inputs
         _ = RebuildPreviewRenderersAsync();
+
+        // Start panel relay and HTTP listener on startup
+        _ = InitializeAsync();
+    }
+
+    /// <summary>
+    /// Post-construction async initialization: starts the HTTP listener for API relay
+    /// and connects the panel relay to the cloud panel on app startup.
+    /// </summary>
+    private async Task InitializeAsync()
+    {
+        try
+        {
+            var settings = await _settingsService.GetSettingsAsync();
+
+            // Configure API services on the streaming service so HTTP endpoints work
+            if (_streamingService is WebRtcStreamingService webRtcService)
+            {
+                var overlayRepository = _serviceProvider.GetService<OverlayRepository>();
+                var settingsRepository = _serviceProvider.GetService<SettingsRepository>();
+                var exportDir = string.IsNullOrEmpty(settings.DefaultRecordingPath) ? null : settings.DefaultRecordingPath;
+
+                webRtcService.SetApiServices(
+                    golferRepository: _golferRepository,
+                    overlayRepository: overlayRepository,
+                    schedulingService: _schedulingService,
+                    settingsRepository: settingsRepository,
+                    statusProvider: () => new ApiStatusInfo
+                    {
+                        IsRecording = IsRecording,
+                        SwingCount = _golfSession.TotalSwings,
+                        GolferName = _golfSession.CurrentSession?.GolferDisplayName,
+                        AutoCutState = _autoCutService.State.ToString(),
+                        IsSessionActive = _golfSession.IsSessionActive,
+                        PracticeSwingCount = PracticeSwingCount
+                    },
+                    exportDirectory: exportDir);
+
+                // Wire panel relay, lower third, and remote control callbacks
+                webRtcService.SetPanelRelay(_panelRelayService);
+                webRtcService.SetLowerThirdCallback(text =>
+                {
+                    Application.Current?.Dispatcher.Invoke(() => Switcher.LowerThirdText = text);
+                });
+                webRtcService.SetRemoteControlCallbacks(
+                    toggleStream: enabled =>
+                    {
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            if (IsStreaming != enabled)
+                                IsStreaming = enabled;
+                        });
+                    },
+                    toggleRecording: async name =>
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(async () =>
+                        {
+                            if (name != null && !IsRecording)
+                            {
+                                RecordingName = name;
+                                await ToggleRecordingCommand.ExecuteAsync(null);
+                            }
+                            else if (name == null && IsRecording)
+                            {
+                                await StopRecordingCommand.ExecuteAsync(null);
+                            }
+                        });
+                    },
+                    isRecordingProvider: () => IsRecording,
+                    isStreamingProvider: () => IsStreaming);
+
+                // Start the HTTP listener for API requests (no video streaming yet)
+                var (width, height, fps) = settings.StreamingResolution switch
+                {
+                    "480p" => (854, 480, 30),
+                    "1080p" => (1920, 1080, 30),
+                    _ => (1280, 720, 30)
+                };
+                var quality = new StreamQualitySettings(width, height, fps, settings.StreamingBitrate);
+                var config = new StreamingConfiguration(
+                    settings.StreamingPort,
+                    quality,
+                    settings.MaxViewers,
+                    settings.RequireAccessToken ? settings.AccessToken : null);
+
+                await webRtcService.StartListenerAsync(config);
+            }
+
+            // Start panel relay if configured
+            await StartPanelRelayAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to initialize panel relay and HTTP listener");
+        }
     }
 
     /// <summary>
@@ -1406,45 +1501,6 @@ public partial class MainViewModel : ObservableObject
 
             await _streamingService.StartAsync(config);
 
-            // Wire panel relay, lower third, and remote control callbacks into streaming service
-            if (_streamingService is WebRtcStreamingService webRtcService)
-            {
-                webRtcService.SetPanelRelay(_panelRelayService);
-                webRtcService.SetLowerThirdCallback(text =>
-                {
-                    Application.Current?.Dispatcher.Invoke(() => Switcher.LowerThirdText = text);
-                });
-                webRtcService.SetRemoteControlCallbacks(
-                    toggleStream: enabled =>
-                    {
-                        Application.Current?.Dispatcher.Invoke(() =>
-                        {
-                            if (IsStreaming != enabled)
-                                IsStreaming = enabled;
-                        });
-                    },
-                    toggleRecording: async name =>
-                    {
-                        await Application.Current.Dispatcher.InvokeAsync(async () =>
-                        {
-                            if (name != null && !IsRecording)
-                            {
-                                RecordingName = name;
-                                await ToggleRecordingCommand.ExecuteAsync(null);
-                            }
-                            else if (name == null && IsRecording)
-                            {
-                                await StopRecordingCommand.ExecuteAsync(null);
-                            }
-                        });
-                    },
-                    isRecordingProvider: () => IsRecording,
-                    isStreamingProvider: () => IsStreaming);
-            }
-
-            // Start panel relay if configured
-            await StartPanelRelayAsync();
-
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 StreamUrl = _streamingService.SignalingUri?.ToString();
@@ -1468,7 +1524,6 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            _panelRelayService.Stop();
             await _streamingService.StopAsync();
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {

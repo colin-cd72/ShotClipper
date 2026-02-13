@@ -23,7 +23,7 @@ public class GolferRepository
     {
         return await _db.QueryAsync<GolferProfile>(
             "SELECT id, first_name AS FirstName, last_name AS LastName, display_name AS DisplayName, " +
-            "handicap AS Handicap, photo_path AS PhotoPath, is_active AS IsActive, " +
+            "photo_path AS PhotoPath, is_active AS IsActive, " +
             "created_at AS CreatedAt, updated_at AS UpdatedAt FROM golfers WHERE is_active = 1 ORDER BY last_name, first_name");
     }
 
@@ -31,7 +31,7 @@ public class GolferRepository
     {
         return await _db.QuerySingleOrDefaultAsync<GolferProfile>(
             "SELECT id, first_name AS FirstName, last_name AS LastName, display_name AS DisplayName, " +
-            "handicap AS Handicap, photo_path AS PhotoPath, is_active AS IsActive, " +
+            "photo_path AS PhotoPath, is_active AS IsActive, " +
             "created_at AS CreatedAt, updated_at AS UpdatedAt FROM golfers WHERE id = @id",
             new { id });
     }
@@ -39,15 +39,14 @@ public class GolferRepository
     public async Task CreateAsync(GolferProfile golfer)
     {
         await _db.ExecuteAsync(
-            "INSERT INTO golfers (id, first_name, last_name, display_name, handicap, photo_path, is_active, created_at, updated_at) " +
-            "VALUES (@Id, @FirstName, @LastName, @DisplayName, @Handicap, @PhotoPath, @IsActive, @CreatedAt, @UpdatedAt)",
+            "INSERT INTO golfers (id, first_name, last_name, display_name, photo_path, is_active, created_at, updated_at) " +
+            "VALUES (@Id, @FirstName, @LastName, @DisplayName, @PhotoPath, @IsActive, @CreatedAt, @UpdatedAt)",
             new
             {
                 golfer.Id,
                 golfer.FirstName,
                 golfer.LastName,
                 golfer.DisplayName,
-                golfer.Handicap,
                 golfer.PhotoPath,
                 IsActive = golfer.IsActive ? 1 : 0,
                 CreatedAt = golfer.CreatedAt.ToString("O"),
@@ -62,14 +61,13 @@ public class GolferRepository
         golfer.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.ExecuteAsync(
             "UPDATE golfers SET first_name = @FirstName, last_name = @LastName, display_name = @DisplayName, " +
-            "handicap = @Handicap, photo_path = @PhotoPath, is_active = @IsActive, updated_at = @UpdatedAt WHERE id = @Id",
+            "photo_path = @PhotoPath, is_active = @IsActive, updated_at = @UpdatedAt WHERE id = @Id",
             new
             {
                 golfer.Id,
                 golfer.FirstName,
                 golfer.LastName,
                 golfer.DisplayName,
-                golfer.Handicap,
                 golfer.PhotoPath,
                 IsActive = golfer.IsActive ? 1 : 0,
                 UpdatedAt = golfer.UpdatedAt.ToString("O")

@@ -131,7 +131,6 @@ public sealed class DatabaseContext : IAsyncDisposable
                 first_name TEXT NOT NULL,
                 last_name TEXT NOT NULL,
                 display_name TEXT,
-                handicap REAL,
                 photo_path TEXT,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
