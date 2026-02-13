@@ -7,7 +7,8 @@
              Background="Transparent">
 
     <Viewbox Stretch="Uniform">
-        <Canvas x:Name="ProgramCanvas" Width="1920" Height="1080" ClipToBounds="True" Background="#1A1A1A">
+        <Canvas x:Name="ProgramCanvas" Width="1920" Height="1080" ClipToBounds="True"
+                Background="{DynamicResource BackgroundLevel0Brush}">
             <!-- Program video -->
             <Image x:Name="ProgramVideoImage"
                    Source="{Binding ProgramImage}"
@@ -97,7 +98,8 @@
             <!-- "NO SIGNAL" overlay when no program frame -->
             <TextBlock Text="NO SIGNAL"
                        Canvas.Left="810" Canvas.Top="510"
-                       FontSize="48" Foreground="#666"
+                       FontSize="48" FontWeight="SemiBold"
+                       Foreground="{DynamicResource NoSignalBrush}"
                        IsHitTestVisible="False">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock">

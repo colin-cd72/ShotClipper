@@ -26,6 +26,7 @@ using Screener.Golf.Switching;
 using Screener.Preview;
 using Screener.Scheduling;
 using Screener.Streaming;
+using Screener.Capture.Virtual;
 using Screener.UI.Views;
 
 namespace Screener.UI.ViewModels;
@@ -50,6 +51,7 @@ public partial class MainViewModel : ObservableObject
     private ICaptureDevice? _audioDevice;
     private InputViewModel? _boundSource1;
     private InputViewModel? _boundSource2;
+    private InputViewModel? _manualPreviewInput;
 
     // Upload service
     private readonly IUploadService _uploadService;
@@ -103,6 +105,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _previewSourceHasSignal;
+
+    // Preview source name for overlay display
+    public string PreviewSourceName => _manualPreviewInput?.ShortName ?? "";
 
     // Recording State
     [ObservableProperty]
@@ -488,6 +493,9 @@ public partial class MainViewModel : ObservableObject
             // Bind source preview images for the two-source switcher layout
             BindSourcePreviews(enabled);
 
+            // Wire BGRA callbacks and start rendering for program monitor output
+            WireUpSwitcherRendering();
+
             // Start audio on selected input
             _audioPreviewService.Start();
             var selected = InputConfiguration.SelectedInput;
@@ -547,6 +555,42 @@ public partial class MainViewModel : ObservableObject
         UpdatePreviewSource();
     }
 
+    /// <summary>
+    /// Wire BGRA frame callbacks from the first two enabled inputs to the TransitionEngine
+    /// and start the rendering loop. Enables Program monitor output regardless of golf mode.
+    /// In golf mode, WireUpGolfFrameCallbacks overwrites these with role-based callbacks.
+    /// </summary>
+    private void WireUpSwitcherRendering()
+    {
+        var enabled = InputConfiguration.Inputs.Where(i => i.IsEnabled).ToList();
+
+        if (enabled.Count > 0 && enabled[0].PreviewRenderer != null)
+        {
+            enabled[0].PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
+            {
+                if (_switcherService.ActiveSourceIndex == 0)
+                    _transitionEngine.SetSourceA(bgra, w, h);
+                else
+                    _transitionEngine.SetSourceB(bgra, w, h);
+                Switcher?.SetProgramDimensions(w, h);
+            });
+        }
+
+        if (enabled.Count > 1 && enabled[1].PreviewRenderer != null)
+        {
+            enabled[1].PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
+            {
+                if (_switcherService.ActiveSourceIndex == 0)
+                    _transitionEngine.SetSourceB(bgra, w, h);
+                else
+                    _transitionEngine.SetSourceA(bgra, w, h);
+                Switcher?.SetProgramDimensions(w, h);
+            });
+        }
+
+        Switcher?.StartRendering();
+    }
+
     private void OnSource1PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (sender is not InputViewModel input) return;
@@ -570,18 +614,28 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void UpdatePreviewSource()
     {
+        // If the user manually selected a preview input, show that
+        var manual = _manualPreviewInput;
+        if (manual != null)
+        {
+            PreviewSourceImage = manual.PreviewImage;
+            PreviewSourceHasSignal = manual.HasSignal;
+            OnPropertyChanged(nameof(PreviewSourceName));
+            return;
+        }
+
+        // Default A/B swap: show whichever source is NOT on program
         if (ActiveSourceIndex == 0)
         {
-            // Source 1 is on program, so preview shows Source 2
             PreviewSourceImage = Source2PreviewImage;
             PreviewSourceHasSignal = Source2HasSignal;
         }
         else
         {
-            // Source 2 is on program, so preview shows Source 1
             PreviewSourceImage = Source1PreviewImage;
             PreviewSourceHasSignal = Source1HasSignal;
         }
+        OnPropertyChanged(nameof(PreviewSourceName));
     }
 
     private void OnInputPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -679,6 +733,27 @@ public partial class MainViewModel : ObservableObject
     private void SelectInput(InputViewModel input)
     {
         InputConfiguration.SelectInput(input);
+
+        // Unsubscribe from previous manual preview input
+        if (_manualPreviewInput != null)
+            _manualPreviewInput.PropertyChanged -= OnManualPreviewPropertyChanged;
+
+        // Show the selected input in the Preview monitor
+        _manualPreviewInput = input;
+        _manualPreviewInput.PropertyChanged += OnManualPreviewPropertyChanged;
+
+        // Update IsPreviewSource on all inputs
+        foreach (var inp in EnabledInputs)
+            inp.IsPreviewSource = (inp == _manualPreviewInput);
+
+        UpdatePreviewSource();
+        OnPropertyChanged(nameof(PreviewSourceName));
+    }
+
+    private void OnManualPreviewPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(InputViewModel.PreviewImage) || e.PropertyName == nameof(InputViewModel.HasSignal))
+            Application.Current?.Dispatcher.BeginInvoke(() => UpdatePreviewSource());
     }
 
     private InputScheduleState GetCurrentScheduleState()
@@ -1622,6 +1697,8 @@ public partial class MainViewModel : ObservableObject
             _autoCutTickTimer = null;
             IsAutoCutEnabled = false;
             ClearGolfFrameCallbacks();
+            // Restore generic position-based BGRA callbacks (golf mode overwrote with role-based ones)
+            WireUpSwitcherRendering();
         }
     }
 
@@ -1853,10 +1930,9 @@ public partial class MainViewModel : ObservableObject
         foreach (var renderer in _previewRenderers.Values)
         {
             renderer.SetFrameAnalysisCallback(null);
-            renderer.SetBgraFrameCallback(null);
+            // Don't clear BGRA callbacks or stop rendering —
+            // switcher rendering is needed regardless of golf mode
         }
-
-        Switcher?.StopRendering();
     }
 
     private void OnGolferAudioSamplesReceived(object? sender, AudioSamplesEventArgs e)
@@ -2084,6 +2160,44 @@ public partial class MainViewModel : ObservableObject
     {
         if (value != null)
             _ = _settingsService.SetAsync(SettingsKeys.GolfAutoUploadProvider, value);
+    }
+
+    [RelayCommand]
+    private async Task AddStillImageSourceAsync()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Image for Virtual Input",
+            Filter = "Image Files|*.png;*.jpg;*.jpeg;*.bmp|All Files|*.*"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var virtualMgr = _serviceProvider.GetRequiredService<VirtualDeviceManager>();
+        await virtualMgr.AddStillImageAsync(
+            Path.GetFileNameWithoutExtension(dialog.FileName), dialog.FileName);
+
+        _deviceManager.RefreshDevices();
+        InputConfiguration.RefreshInputs();
+        await RebuildPreviewRenderersAsync();
+    }
+
+    [RelayCommand]
+    private async Task AddColorSourceAsync()
+    {
+        var dialog = new Views.ColorPickerDialog
+        {
+            Owner = Application.Current.MainWindow
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var name = $"#{dialog.SelectedR:X2}{dialog.SelectedG:X2}{dialog.SelectedB:X2}";
+
+        var virtualMgr = _serviceProvider.GetRequiredService<VirtualDeviceManager>();
+        await virtualMgr.AddColorSourceAsync(name, dialog.SelectedR, dialog.SelectedG, dialog.SelectedB);
+
+        _deviceManager.RefreshDevices();
+        InputConfiguration.RefreshInputs();
+        await RebuildPreviewRenderersAsync();
     }
 
     [RelayCommand]

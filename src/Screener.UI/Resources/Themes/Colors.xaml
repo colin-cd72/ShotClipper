@@ -69,6 +69,37 @@
     <Color x:Key="StreamingLive">#FFE53935</Color>
     <SolidColorBrush x:Key="StreamingLiveBrush" Color="{StaticResource StreamingLive}"/>
 
+    <!-- Tally Colors (broadcast standard) -->
+    <Color x:Key="TallyRed">#FFCC0000</Color>
+    <Color x:Key="TallyGreen">#FF00CC00</Color>
+    <Color x:Key="TallyDefault">#FF333333</Color>
+    <SolidColorBrush x:Key="TallyRedBrush" Color="{StaticResource TallyRed}"/>
+    <SolidColorBrush x:Key="TallyGreenBrush" Color="{StaticResource TallyGreen}"/>
+    <SolidColorBrush x:Key="TallyDefaultBrush" Color="{StaticResource TallyDefault}"/>
+
+    <!-- Monitor Labels -->
+    <SolidColorBrush x:Key="PreviewBadgeBrush" Color="#CC00AA00"/>
+    <SolidColorBrush x:Key="ProgramBadgeBrush" Color="#CCFF0000"/>
+
+    <!-- Input Source Badges -->
+    <SolidColorBrush x:Key="PgmBadgeBrush" Color="#CCFF0000"/>
+    <SolidColorBrush x:Key="PvwBadgeBrush" Color="#CC00AA00"/>
+
+    <!-- Slider -->
+    <Color x:Key="SliderThumb">#FF888888</Color>
+    <Color x:Key="SliderThumbHover">#FFAAAAAA</Color>
+    <Color x:Key="SliderTrack">#FF444444</Color>
+    <SolidColorBrush x:Key="SliderThumbBrush" Color="{StaticResource SliderThumb}"/>
+    <SolidColorBrush x:Key="SliderTrackBrush" Color="{StaticResource SliderTrack}"/>
+
+    <!-- Transition -->
+    <Color x:Key="TransitionActive">#FFFF4444</Color>
+    <SolidColorBrush x:Key="TransitionActiveBrush" Color="{StaticResource TransitionActive}"/>
+
+    <!-- Monitor -->
+    <SolidColorBrush x:Key="NoSignalBrush" Color="#FF555555"/>
+    <DropShadowEffect x:Key="MonitorShadow" BlurRadius="12" ShadowDepth="3" Color="Black" Opacity="0.5" Direction="270"/>
+
     <!-- Gradient Brushes -->
     <LinearGradientBrush x:Key="AudioMeterGradient" StartPoint="0,1" EndPoint="0,0">
         <GradientStop Color="{StaticResource MeterGreen}" Offset="0"/>

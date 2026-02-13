@@ -69,7 +69,7 @@ public partial class InputConfigurationViewModel : ObservableObject
                 DisplayName = device.DisplayName,
                 Connector = connector,
                 InputIndex = index,
-                IsEnabled = index == 0, // Enable first input by default
+                IsEnabled = index == 0 || connector == VideoConnector.Virtual, // Enable first input + all virtual sources
                 IsSelected = index == 0, // Select first input by default
                 HasSignal = device.Status == DeviceStatus.Capturing
             });
@@ -188,6 +188,12 @@ public partial class InputViewModel : ObservableObject
     private bool _isProgramSource;
 
     /// <summary>
+    /// Whether this input is the current preview source (PVW).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isPreviewSource;
+
+    /// <summary>
     /// Internal renderer managed by MainViewModel.
     /// </summary>
     internal InputPreviewRenderer? PreviewRenderer { get; set; }
@@ -196,6 +202,7 @@ public partial class InputViewModel : ObservableObject
     {
         VideoConnector.NDI => DisplayName.Replace(" (NDI)", ""),
         VideoConnector.SRT => DisplayName,
+        VideoConnector.Virtual => DisplayName,
         _ => $"Input {InputIndex + 1}"
     };
 

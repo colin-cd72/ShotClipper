@@ -283,4 +283,291 @@
         </Setter>
     </Style>
 
+    <!-- ========== Transition Button Style (CUT/DISS/DIP/AUTO) ========== -->
+    <Style x:Key="TransitionButtonStyle" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="0,5"/>
+        <Setter Property="Margin" Value="0,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="border" CornerRadius="4"
+                            BorderThickness="1" Padding="{TemplateBinding Padding}">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource BackgroundLevel3}"/>
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{DynamicResource BorderSubtle}"/>
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel2}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel3}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource TransitionActiveBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========== KEY Toggle Button Style (orange when checked) ========== -->
+    <Style x:Key="KeyToggleButtonStyle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="0,5"/>
+        <Setter Property="Margin" Value="0,2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="border" CornerRadius="4"
+                            BorderThickness="1" Padding="{TemplateBinding Padding}">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource BackgroundLevel3}"/>
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{DynamicResource BorderSubtle}"/>
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel2}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel3}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="border" Property="Background">
+                                <Setter.Value>
+                                    <SolidColorBrush Color="#40FFAA00"/>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter TargetName="border" Property="BorderBrush">
+                                <Setter.Value>
+                                    <SolidColorBrush Color="{StaticResource AccentOrange}"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========== Add Source Button Style (+ button) ========== -->
+    <Style x:Key="AddSourceButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="40"/>
+        <Setter Property="Height" Value="40"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="border" CornerRadius="4"
+                            BorderThickness="1" Padding="0">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource BackgroundLevel2}"/>
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{DynamicResource BorderSubtle}"/>
+                        </Border.BorderBrush>
+                        <TextBlock x:Name="plusText" Text="+" FontSize="18" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel3}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel2}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="plusText" Property="Foreground" Value="{DynamicResource AccentBlueBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource AccentBlueBrush}"/>
+                            <Setter TargetName="plusText" Property="Foreground" Value="White"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========== ON/OFF Toggle Button Style (Auto-Cut / Auto-Upload) ========== -->
+    <Style x:Key="OnOffToggleButtonStyle" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="border" CornerRadius="4"
+                            BorderThickness="1" Padding="{TemplateBinding Padding}">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource BackgroundLevel3}"/>
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{DynamicResource BorderSubtle}"/>
+                        </Border.BorderBrush>
+                        <TextBlock x:Name="label" Text="OFF"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel2}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel3}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="label" Property="Text" Value="ON"/>
+                            <Setter TargetName="border" Property="Background">
+                                <Setter.Value>
+                                    <SolidColorBrush Color="#404CAF50"/>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter TargetName="border" Property="BorderBrush">
+                                <Setter.Value>
+                                    <SolidColorBrush Color="{StaticResource AccentGreen}"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ========== Golf Quick-Cut Button Style (GOLFER/SIMULATOR status bar) ========== -->
+    <Style x:Key="GolfQuickCutButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="80"/>
+        <Setter Property="Height" Value="24"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Margin" Value="2,0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="border" CornerRadius="3"
+                            BorderThickness="1" Padding="4,2">
+                        <Border.Background>
+                            <SolidColorBrush Color="{DynamicResource BackgroundLevel3}"/>
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{DynamicResource BorderSubtle}"/>
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel2}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <ColorAnimation Storyboard.TargetName="border"
+                                                    Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)"
+                                                    To="{StaticResource BackgroundLevel3}"
+                                                    Duration="0:0:0.15"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="border" Property="Background" Value="{DynamicResource TransitionActiveBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>
