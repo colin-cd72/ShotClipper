@@ -6,6 +6,22 @@ using Microsoft.Extensions.Logging;
 namespace Screener.Core.Persistence;
 
 /// <summary>
+/// Dapper type handler for DateTimeOffset stored as ISO 8601 strings in SQLite.
+/// </summary>
+internal class DateTimeOffsetHandler : SqlMapper.TypeHandler<DateTimeOffset>
+{
+    public override void SetValue(IDbDataParameter parameter, DateTimeOffset value)
+    {
+        parameter.Value = value.ToString("O");
+    }
+
+    public override DateTimeOffset Parse(object value)
+    {
+        return DateTimeOffset.Parse((string)value);
+    }
+}
+
+/// <summary>
 /// SQLite database context for application persistence.
 /// </summary>
 public sealed class DatabaseContext : IAsyncDisposable
@@ -13,6 +29,11 @@ public sealed class DatabaseContext : IAsyncDisposable
     private readonly ILogger<DatabaseContext> _logger;
     private readonly string _connectionString;
     private SqliteConnection? _connection;
+
+    static DatabaseContext()
+    {
+        SqlMapper.AddTypeHandler(new DateTimeOffsetHandler());
+    }
 
     public DatabaseContext(ILogger<DatabaseContext> logger, string? databasePath = null)
     {
