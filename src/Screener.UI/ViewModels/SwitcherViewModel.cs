@@ -28,6 +28,9 @@ public partial class SwitcherViewModel : ObservableObject
     private DateTime _lastRenderTime;
     private bool _renderingSubscribed;
 
+    // Callback to push overlay state to streaming service
+    private Action<bool, string?, double, double>? _overlayStateCallback;
+
     // Transition controls
     [ObservableProperty]
     private TransitionType _selectedTransition = TransitionType.Cut;
@@ -139,6 +142,14 @@ public partial class SwitcherViewModel : ObservableObject
         _renderingSubscribed = false;
     }
 
+    /// <summary>
+    /// Set callback for pushing overlay state changes to the streaming service.
+    /// </summary>
+    public void SetOverlayStateCallback(Action<bool, string?, double, double>? callback)
+    {
+        _overlayStateCallback = callback;
+    }
+
     partial void OnTransitionDurationMsChanged(int value)
     {
         _engine.DurationMs = value;
@@ -166,6 +177,7 @@ public partial class SwitcherViewModel : ObservableObject
     {
         IsLogoVisible = value && LogoImageSource != null;
         IsLowerThirdVisible = value && !string.IsNullOrEmpty(LowerThirdText);
+        _overlayStateCallback?.Invoke(IsLowerThirdVisible, LowerThirdText, LowerThirdX, LowerThirdY);
     }
 
     partial void OnLowerThirdTextChanged(string value)
@@ -174,6 +186,17 @@ public partial class SwitcherViewModel : ObservableObject
         IsPreviewLowerThirdVisible = !string.IsNullOrEmpty(value);
         // Program lower third respects KEY toggle
         IsLowerThirdVisible = IsKeyActive && !string.IsNullOrEmpty(value);
+        _overlayStateCallback?.Invoke(IsLowerThirdVisible, value, LowerThirdX, LowerThirdY);
+    }
+
+    partial void OnLowerThirdXChanged(double value)
+    {
+        _overlayStateCallback?.Invoke(IsLowerThirdVisible, LowerThirdText, value, LowerThirdY);
+    }
+
+    partial void OnLowerThirdYChanged(double value)
+    {
+        _overlayStateCallback?.Invoke(IsLowerThirdVisible, LowerThirdText, LowerThirdX, value);
     }
 
     [RelayCommand]

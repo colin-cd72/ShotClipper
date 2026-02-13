@@ -487,6 +487,13 @@ public partial class MainViewModel : ObservableObject
                 {
                     Application.Current?.Dispatcher.Invoke(() => Switcher.LowerThirdText = text);
                 });
+
+                // Wire overlay state from SwitcherViewModel to streaming service
+                Switcher.SetOverlayStateCallback((visible, text, x, y) =>
+                {
+                    webRtcService.SetLowerThirdOverlayState(visible, text, x, y);
+                });
+
                 webRtcService.SetRemoteControlCallbacks(
                     toggleStream: enabled =>
                     {

@@ -104,6 +104,18 @@ public sealed class WebRtcStreamingService : IStreamingService
     }
 
     /// <summary>
+    /// Set the lower third overlay state for compositing onto stream frames.
+    /// Called from SwitcherViewModel when KEY or lower third text/position changes.
+    /// </summary>
+    public void SetLowerThirdOverlayState(bool visible, string? text, double x, double y)
+    {
+        _overlayLowerThirdVisible = visible;
+        _overlayLowerThirdText = text;
+        _overlayLowerThirdX = (float)x;
+        _overlayLowerThirdY = (float)y;
+    }
+
+    /// <summary>
     /// Start just the HTTP listener for API requests and WebSocket connections,
     /// without activating video streaming. Call this on app startup so the panel
     /// relay can forward API requests even when streaming is off.
@@ -239,6 +251,14 @@ public sealed class WebRtcStreamingService : IStreamingService
         _panelRelay = relay;
     }
 
+    // Lower third overlay state (set by SwitcherViewModel via callback)
+    private volatile bool _overlayLowerThirdVisible;
+    private volatile string? _overlayLowerThirdText;
+    private float _overlayLowerThirdX = 40;
+    private float _overlayLowerThirdY = 960;  // canvas Y (from top, in 1920x1080 space)
+    private float _overlayFontSize = 32;
+    private string _overlayFontFamily = "Arial";
+
     // UYVY→JPEG encoding state
     private int _streamWidth;
     private int _streamHeight;
@@ -340,6 +360,33 @@ public sealed class WebRtcStreamingService : IStreamingService
                 finally
                 {
                     bmp.UnlockBits(bmpData);
+                }
+
+                // Composite lower third overlay if KEY is active
+                if (_overlayLowerThirdVisible && !string.IsNullOrEmpty(_overlayLowerThirdText))
+                {
+                    float scaleX = (float)dstWidth / 1920f;
+                    float scaleY = (float)dstHeight / 1080f;
+                    float x = _overlayLowerThirdX * scaleX;
+                    float y = _overlayLowerThirdY * scaleY;
+                    float fontSize = _overlayFontSize * scaleY;
+
+                    using var g = Graphics.FromImage(bmp);
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                    using var font = new Font(_overlayFontFamily, Math.Max(8, fontSize), FontStyle.Bold);
+                    var textSize = g.MeasureString(_overlayLowerThirdText, font);
+
+                    // Background box (semi-transparent black)
+                    float pad = 8 * scaleY;
+                    using var boxBrush = new SolidBrush(Color.FromArgb(153, 0, 0, 0));
+                    g.FillRectangle(boxBrush, x - pad, y - pad,
+                        textSize.Width + 2 * pad, textSize.Height + 2 * pad);
+
+                    // Text
+                    using var textBrush = new SolidBrush(Color.White);
+                    g.DrawString(_overlayLowerThirdText, font, textBrush, x, y);
                 }
 
                 // Encode to JPEG
