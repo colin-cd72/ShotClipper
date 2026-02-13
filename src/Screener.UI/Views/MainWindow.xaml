@@ -541,7 +541,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- Row 0: Preview (left) | Transition Controls (center) | Program (right) -->
-                <Grid Grid.Row="0" Margin="8,8,8,4" MaxHeight="340">
+                <Grid Grid.Row="0" Margin="8,8,8,4" MaxHeight="480">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -566,10 +566,20 @@
                             </Border.Style>
                             <Grid Background="#111">
                                 <Viewbox Stretch="Uniform">
-                                    <Border Width="1920" Height="1080" Background="{DynamicResource BackgroundLevel0Brush}">
+                                    <Canvas Width="1920" Height="1080" Background="{DynamicResource BackgroundLevel0Brush}">
                                         <Image Source="{Binding PreviewSourceImage}" Stretch="Fill"
+                                               Width="1920" Height="1080"
                                                RenderOptions.BitmapScalingMode="LowQuality"/>
-                                    </Border>
+                                        <!-- Preview lower third overlay (semi-transparent, always visible when text is set) -->
+                                        <Border Canvas.Left="{Binding Switcher.LowerThirdX}"
+                                                Canvas.Top="{Binding Switcher.LowerThirdY}"
+                                                Background="#CC000000" CornerRadius="4" Padding="24,10"
+                                                Opacity="0.7" IsHitTestVisible="False"
+                                                Visibility="{Binding Switcher.IsPreviewLowerThirdVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                                            <TextBlock Text="{Binding Switcher.LowerThirdText}"
+                                                       Foreground="White" FontSize="42" FontWeight="SemiBold"/>
+                                        </Border>
+                                    </Canvas>
                                 </Viewbox>
                                 <!-- PREVIEW label badge (green) -->
                                 <Border HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -693,7 +703,12 @@
                                             Background="{DynamicResource BackgroundLevel2Brush}"
                                             MouseLeftButtonDown="OnInputThumbnailClick"
                                             MouseRightButtonDown="OnInputThumbnailRightClick"
-                                            Tag="{Binding}">
+                                            MouseMove="OnInputThumbnailDragMove"
+                                            AllowDrop="True"
+                                            DragOver="OnInputThumbnailDragOver"
+                                            Drop="OnInputThumbnailDrop"
+                                            Tag="{Binding}"
+                                            VerticalAlignment="Top">
                                         <Border.Effect>
                                             <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.3" Color="Black"/>
                                         </Border.Effect>
@@ -724,7 +739,7 @@
                                         <StackPanel Width="180">
                                             <!-- Thumbnail preview with vignette -->
                                             <Grid>
-                                                <Viewbox Stretch="Uniform" Height="100">
+                                                <Viewbox Stretch="Uniform">
                                                     <Border Width="1920" Height="1080" Background="{DynamicResource BackgroundLevel0Brush}">
                                                         <Image Source="{Binding PreviewImage}" Stretch="Fill"
                                                                RenderOptions.BitmapScalingMode="LowQuality"/>
@@ -1330,7 +1345,32 @@
                         <Border Background="{DynamicResource PanelHeaderGradient}" CornerRadius="6,6,0,0" Padding="0" Grid.Row="0">
                             <Border BorderBrush="{DynamicResource AccentRedBrush}" BorderThickness="3,0,0,0"
                                     CornerRadius="6,0,0,0" Padding="10,8,10,8">
-                                <TextBlock Text="AUDIO LEVELS" Style="{DynamicResource PanelHeaderStyle}" Margin="0"/>
+                                <DockPanel>
+                                    <TextBlock Text="AUDIO LEVELS" Style="{DynamicResource PanelHeaderStyle}" Margin="0"/>
+                                    <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding IsAudioLocked}"
+                                                  Command="{Binding ToggleAudioLockCommand}"
+                                                  Width="24" Height="24" Margin="4,0,0,0"
+                                                  Background="Transparent" BorderThickness="0"
+                                                  ToolTip="Lock audio to current source"
+                                                  HorizontalAlignment="Right">
+                                        <TextBlock Text="&#xE785;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAudioLocked}" Value="True">
+                                                            <Setter Property="Foreground" Value="{DynamicResource AccentRedBrush}"/>
+                                                            <Setter Property="Text" Value="&#xE72E;"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsAudioLocked}" Value="False">
+                                                            <Setter Property="Text" Value="&#xE785;"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </ToggleButton>
+                                </DockPanel>
                             </Border>
                         </Border>
                         <controls:AudioMetersPanel Grid.Row="1"

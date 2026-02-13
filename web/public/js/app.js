@@ -8,6 +8,7 @@ const App = {
         dashboard: DashboardPage,
         clips: ClipsPage,
         golfers: GolfersPage,
+        players: PlayersPage,
         overlays: OverlaysPage,
         schedules: SchedulesPage,
         settings: SettingsPage

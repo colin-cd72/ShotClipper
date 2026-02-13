@@ -49,6 +49,7 @@ public partial class MainViewModel : ObservableObject
     // Multi-view preview state
     private readonly Dictionary<string, InputPreviewRenderer> _previewRenderers = new();
     private ICaptureDevice? _audioDevice;
+    private InputViewModel? _audioLockedInput;
     private InputViewModel? _boundSource1;
     private InputViewModel? _boundSource2;
     private InputViewModel? _manualPreviewInput;
@@ -243,6 +244,12 @@ public partial class MainViewModel : ObservableObject
     // Audio Swing Detection
     [ObservableProperty]
     private double _audioLevel = -60.0;
+
+    // Audio Lock
+    [ObservableProperty]
+    private bool _isAudioLocked;
+
+    public InputViewModel? AudioLockedInput => _audioLockedInput;
 
     private ICaptureDevice? _golferAudioDevice;
 
@@ -568,10 +575,7 @@ public partial class MainViewModel : ObservableObject
         {
             enabled[0].PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
             {
-                if (_switcherService.ActiveSourceIndex == 0)
-                    _transitionEngine.SetSourceA(bgra, w, h);
-                else
-                    _transitionEngine.SetSourceB(bgra, w, h);
+                _transitionEngine.SetSource(0, bgra, w, h);
                 Switcher?.SetProgramDimensions(w, h);
             });
         }
@@ -580,10 +584,7 @@ public partial class MainViewModel : ObservableObject
         {
             enabled[1].PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
             {
-                if (_switcherService.ActiveSourceIndex == 0)
-                    _transitionEngine.SetSourceB(bgra, w, h);
-                else
-                    _transitionEngine.SetSourceA(bgra, w, h);
+                _transitionEngine.SetSource(1, bgra, w, h);
                 Switcher?.SetProgramDimensions(w, h);
             });
         }
@@ -642,6 +643,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (e.PropertyName == nameof(InputViewModel.IsEnabled))
         {
+            // Auto-unlock audio if the locked source is disabled
+            if (sender is InputViewModel changedInput && !changedInput.IsEnabled
+                && IsAudioLocked && _audioLockedInput == changedInput)
+            {
+                UnlockAudio();
+            }
+
             _ = RebuildPreviewRenderersAsync();
         }
         else if (e.PropertyName == nameof(InputViewModel.HasSignal) || e.PropertyName == nameof(InputViewModel.FormatDescription))
@@ -661,9 +669,13 @@ public partial class MainViewModel : ObservableObject
         _logger.LogInformation("Selected input changed to: {Input} ({DeviceId})",
             input.ShortName, input.DeviceId);
 
-        // Switch audio routing to the newly selected input
-        DetachAudio();
-        AttachAudio(input);
+        // Only switch audio if not locked to a specific source
+        if (!IsAudioLocked)
+        {
+            DetachAudio();
+            AttachAudio(input);
+        }
+
         UpdateInputStatus(input);
 
         // Update output selection on all renderers
@@ -703,6 +715,37 @@ public partial class MainViewModel : ObservableObject
         {
             _audioDevice.AudioSamplesReceived -= OnAudioSamplesReceived;
             _audioDevice = null;
+        }
+    }
+
+    public void LockAudioToSource(InputViewModel input)
+    {
+        DetachAudio();
+        AttachAudio(input);
+        _audioLockedInput = input;
+        IsAudioLocked = true;
+        _logger.LogInformation("Audio locked to {Input}", input.ShortName);
+    }
+
+    public void UnlockAudio()
+    {
+        _audioLockedInput = null;
+        IsAudioLocked = false;
+        DetachAudio();
+        AttachAudio(InputConfiguration.SelectedInput);
+        _logger.LogInformation("Audio unlocked, following selected input");
+    }
+
+    [RelayCommand]
+    private void ToggleAudioLock()
+    {
+        if (IsAudioLocked)
+        {
+            UnlockAudio();
+        }
+        else if (InputConfiguration.SelectedInput is { } selected)
+        {
+            LockAudioToSource(selected);
         }
     }
 
@@ -1363,10 +1406,14 @@ public partial class MainViewModel : ObservableObject
 
             await _streamingService.StartAsync(config);
 
-            // Wire panel relay into streaming service
+            // Wire panel relay and lower third callback into streaming service
             if (_streamingService is WebRtcStreamingService webRtcService)
             {
                 webRtcService.SetPanelRelay(_panelRelayService);
+                webRtcService.SetLowerThirdCallback(text =>
+                {
+                    Application.Current?.Dispatcher.Invoke(() => Switcher.LowerThirdText = text);
+                });
             }
 
             // Start panel relay if configured
@@ -1665,14 +1712,22 @@ public partial class MainViewModel : ObservableObject
     private void CutToSource1()
     {
         if (!IsGolfModeEnabled) return;
-        _switcherService.CutToSource(0, "manual");
+        if (_switcherService.ActiveSourceIndex == 0) return; // Already on source 1
+        if (Switcher != null)
+            Switcher.TriggerTransition(TransitionType.Cut);
+        else
+            _switcherService.CutToSource(0, "manual");
     }
 
     [RelayCommand]
     private void CutToSource2()
     {
         if (!IsGolfModeEnabled) return;
-        _switcherService.CutToSource(1, "manual");
+        if (_switcherService.ActiveSourceIndex == 1) return; // Already on source 2
+        if (Switcher != null)
+            Switcher.TriggerTransition(TransitionType.Cut);
+        else
+            _switcherService.CutToSource(1, "manual");
     }
 
     partial void OnIsGolfModeEnabledChanged(bool value)
@@ -1847,14 +1902,10 @@ public partial class MainViewModel : ObservableObject
                     MotionLevel = _autoCutService.SwingDetector.LastSad);
             });
 
-            // Wire BGRA callback for TransitionEngine (Source A = golfer when index 0)
+            // Wire BGRA callback for TransitionEngine (golfer = slot 0)
             golferInput.PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
             {
-                if (_switcherService.ActiveSourceIndex == 0)
-                    _transitionEngine.SetSourceA(bgra, w, h);
-                else
-                    _transitionEngine.SetSourceB(bgra, w, h);
-
+                _transitionEngine.SetSource(0, bgra, w, h);
                 Switcher?.SetProgramDimensions(w, h);
             });
 
@@ -1892,14 +1943,10 @@ public partial class MainViewModel : ObservableObject
                 _autoCutService.ProcessSource2Frame(data, w, h);
             });
 
-            // Wire BGRA callback for TransitionEngine (Source B = simulator when index 0)
+            // Wire BGRA callback for TransitionEngine (simulator = slot 1)
             simInput.PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
             {
-                if (_switcherService.ActiveSourceIndex == 0)
-                    _transitionEngine.SetSourceB(bgra, w, h);
-                else
-                    _transitionEngine.SetSourceA(bgra, w, h);
-
+                _transitionEngine.SetSource(1, bgra, w, h);
                 Switcher?.SetProgramDimensions(w, h);
             });
 
@@ -1947,6 +1994,14 @@ public partial class MainViewModel : ObservableObject
         Application.Current.Dispatcher.Invoke(() =>
         {
             ActiveSourceIndex = e.NewSourceIndex;
+
+            // Clear manual preview override so A/B flip-flop takes over
+            if (_manualPreviewInput != null)
+            {
+                _manualPreviewInput.PropertyChanged -= OnManualPreviewPropertyChanged;
+                _manualPreviewInput = null;
+            }
+
             UpdatePreviewSource();
 
             // Update IsProgramSource on all inputs

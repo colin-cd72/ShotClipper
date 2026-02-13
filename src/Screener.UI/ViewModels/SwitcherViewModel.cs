@@ -79,6 +79,10 @@ public partial class SwitcherViewModel : ObservableObject
     [ObservableProperty]
     private string _lowerThirdText = "";
 
+    // Preview lower third visibility (always shows when text is set, regardless of KEY)
+    [ObservableProperty]
+    private bool _isPreviewLowerThirdVisible;
+
     // KEY toggle (downstream key for overlays)
     [ObservableProperty]
     private bool _isKeyActive;
@@ -145,17 +149,31 @@ public partial class SwitcherViewModel : ObservableObject
         if (!_engine.IsTransitioning || _isManualControl)
         {
             _isManualControl = true;
-            _engine.SetManualPosition(value);
+
+            // Compute effective engine position based on T-bar direction.
+            // When resting at 1.0, dragging back toward 0 is a new transition.
+            double effectivePosition = _tbarRestPosition >= 1.0 ? 1.0 - value : value;
+
+            _engine.SetManualPosition(effectivePosition);
             IsTransitioning = _engine.IsTransitioning;
         }
     }
 
     private bool _isManualControl;
+    private double _tbarRestPosition; // 0.0 or 1.0 — where the T-bar last completed
 
     partial void OnIsKeyActiveChanged(bool value)
     {
         IsLogoVisible = value && LogoImageSource != null;
         IsLowerThirdVisible = value && !string.IsNullOrEmpty(LowerThirdText);
+    }
+
+    partial void OnLowerThirdTextChanged(string value)
+    {
+        // Preview always shows when text is set, regardless of KEY state
+        IsPreviewLowerThirdVisible = !string.IsNullOrEmpty(value);
+        // Program lower third respects KEY toggle
+        IsLowerThirdVisible = IsKeyActive && !string.IsNullOrEmpty(value);
     }
 
     [RelayCommand]
@@ -171,6 +189,26 @@ public partial class SwitcherViewModel : ObservableObject
         _isManualControl = false;
         _engine.DurationMs = TransitionDurationMs;
         _engine.TriggerAutoTransition(SelectedTransition);
+        IsTransitioning = _engine.IsTransitioning;
+    }
+
+    [RelayCommand]
+    private void ExecuteDissolve()
+    {
+        _isManualControl = false;
+        SelectedTransition = TransitionType.Dissolve;
+        _engine.DurationMs = TransitionDurationMs;
+        _engine.TriggerAutoTransition(TransitionType.Dissolve);
+        IsTransitioning = _engine.IsTransitioning;
+    }
+
+    [RelayCommand]
+    private void ExecuteDipToBlack()
+    {
+        _isManualControl = false;
+        SelectedTransition = TransitionType.DipToBlack;
+        _engine.DurationMs = TransitionDurationMs;
+        _engine.TriggerAutoTransition(TransitionType.DipToBlack);
         IsTransitioning = _engine.IsTransitioning;
     }
 
@@ -201,7 +239,10 @@ public partial class SwitcherViewModel : ObservableObject
         Application.Current?.Dispatcher.BeginInvoke(() =>
         {
             IsTransitioning = false;
-            TransitionPosition = 0;
+
+            // T-bar stays at completion position; record new rest
+            _tbarRestPosition = _tbarRestPosition >= 1.0 ? 0.0 : 1.0;
+
             _isManualControl = false;
 
             // Notify SwitcherService that the transition completed
@@ -223,7 +264,10 @@ public partial class SwitcherViewModel : ObservableObject
         // Update UI binding for transition position during auto-transition
         if (_engine.IsTransitioning && !_isManualControl)
         {
-            TransitionPosition = _engine.TransitionPosition;
+            // Mirror the slider direction when resting at bottom
+            TransitionPosition = _tbarRestPosition >= 1.0
+                ? 1.0 - _engine.TransitionPosition
+                : _engine.TransitionPosition;
         }
         IsTransitioning = _engine.IsTransitioning;
 

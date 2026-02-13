@@ -69,7 +69,9 @@ function createApiProxy() {
     // Proxy all API routes
     router.all('/status', proxyRequest);
     router.all('/golfers', proxyRequest);
+    router.all('/golfers/import', proxyRequest);
     router.all('/golfers/:id', proxyRequest);
+    router.all('/lowerthird', proxyRequest);
     router.all('/overlays', proxyRequest);
     router.all('/overlays/:type', proxyRequest);
     router.all('/overlays/logo', proxyRequest);

@@ -32,6 +32,9 @@ public sealed class WebRtcStreamingService : IStreamingService
     private Func<ApiStatusInfo>? _statusProvider;
     private string? _exportDirectory;
 
+    // Lower third callback (set by desktop app to push text to SwitcherViewModel)
+    private Action<string>? _setLowerThirdCallback;
+
     private HttpListener? _httpListener;
     private StreamingConfiguration? _config;
     private StreamingState _state = StreamingState.Stopped;
@@ -68,6 +71,14 @@ public sealed class WebRtcStreamingService : IStreamingService
         _settingsRepository = settingsRepository;
         _statusProvider = statusProvider;
         _exportDirectory = exportDirectory;
+    }
+
+    /// <summary>
+    /// Set callback for lower third text updates from the web panel.
+    /// </summary>
+    public void SetLowerThirdCallback(Action<string> callback)
+    {
+        _setLowerThirdCallback = callback;
     }
 
     public async Task StartAsync(StreamingConfiguration config, CancellationToken ct = default)
@@ -473,6 +484,8 @@ public sealed class WebRtcStreamingService : IStreamingService
                 await HandleGetGolfers(context);
             else if (path == "/api/golfers" && method == "POST")
                 await HandleCreateGolfer(context);
+            else if (path == "/api/golfers/import" && method == "POST")
+                await HandleImportGolfers(context);
             else if (path.StartsWith("/api/golfers/") && method == "PUT")
                 await HandleUpdateGolfer(context, path);
             else if (path.StartsWith("/api/golfers/") && method == "DELETE")
@@ -497,6 +510,10 @@ public sealed class WebRtcStreamingService : IStreamingService
                 await HandleGetSetting(context, path);
             else if (path.StartsWith("/api/settings/") && method == "PUT")
                 await HandleSetSetting(context, path);
+            else if (path == "/api/lowerthird" && method == "POST")
+                await HandleSetLowerThird(context);
+            else if (path == "/api/lowerthird" && method == "DELETE")
+                await HandleClearLowerThird(context);
             else
                 await WriteJsonResponse(context, 404, new { error = "Not found" });
         }
@@ -600,6 +617,73 @@ public sealed class WebRtcStreamingService : IStreamingService
         var id = path.Replace("/api/golfers/", "");
         await _golferRepository.DeleteAsync(id);
         await WriteJsonResponse(context, 200, new { deleted = true });
+    }
+
+    private async Task HandleImportGolfers(HttpListenerContext context)
+    {
+        if (_golferRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Golfer service not available" });
+            return;
+        }
+
+        var body = await ReadJsonBody<GolferImportRequest>(context);
+        if (body?.Names == null || body.Names.Count == 0)
+        {
+            await WriteJsonResponse(context, 400, new { error = "No names provided" });
+            return;
+        }
+
+        var created = new List<GolferProfile>();
+        foreach (var name in body.Names)
+        {
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
+            var trimmed = name.Trim();
+            var spaceIdx = trimmed.IndexOf(' ');
+            string firstName, lastName;
+            if (spaceIdx > 0)
+            {
+                firstName = trimmed[..spaceIdx];
+                lastName = trimmed[(spaceIdx + 1)..];
+            }
+            else
+            {
+                firstName = trimmed;
+                lastName = "";
+            }
+
+            var golfer = new GolferProfile
+            {
+                Id = Guid.NewGuid().ToString(),
+                FirstName = firstName,
+                LastName = lastName,
+                DisplayName = trimmed,
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            await _golferRepository.CreateAsync(golfer);
+            created.Add(golfer);
+        }
+
+        await WriteJsonResponse(context, 201, new { imported = created.Count, golfers = created });
+    }
+
+    private async Task HandleSetLowerThird(HttpListenerContext context)
+    {
+        var body = await ReadJsonBody<LowerThirdRequest>(context);
+        if (body == null) return;
+
+        var text = body.Text ?? "";
+        _setLowerThirdCallback?.Invoke(text);
+        await WriteJsonResponse(context, 200, new { text });
+    }
+
+    private async Task HandleClearLowerThird(HttpListenerContext context)
+    {
+        _setLowerThirdCallback?.Invoke("");
+        await WriteJsonResponse(context, 200, new { text = "" });
     }
 
     private async Task HandleGetOverlays(HttpListenerContext context)
@@ -1225,6 +1309,22 @@ public class ApiStatusInfo
     public string? GolferName { get; set; }
     public string? AutoCutState { get; set; }
     public int PracticeSwingCount { get; set; }
+}
+
+/// <summary>
+/// Request body for POST /api/golfers/import.
+/// </summary>
+public class GolferImportRequest
+{
+    public List<string> Names { get; set; } = new();
+}
+
+/// <summary>
+/// Request body for POST /api/lowerthird.
+/// </summary>
+public class LowerThirdRequest
+{
+    public string? Text { get; set; }
 }
 
 internal class ViewerSession
