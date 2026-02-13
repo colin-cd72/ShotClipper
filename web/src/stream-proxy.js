@@ -1,105 +1,109 @@
 const WebSocket = require('ws');
-const { getConfig } = require('./db');
+const { getConfig, setConfig } = require('./db');
 
 /**
- * Relays the MJPEG WebSocket stream from the desktop app to browser clients.
- * Resolves desktop URL dynamically from config DB.
+ * Push-based stream relay: desktop connects OUT to VPS and pushes frames + status.
+ * No inbound connections to desktop needed — works through any firewall/NAT.
  */
-function setupStreamProxy(io) {
+function setupStreamProxy(io, server) {
     const streamNamespace = io.of('/stream');
-    let desktopWs = null;
-    let reconnectTimer = null;
-    let currentWsUrl = null;
+    const wss = new WebSocket.Server({ noServer: true });
+    let desktopSocket = null;
+    let lastStatus = { _desktopOnline: false };
 
-    function getDesktopWsUrl() {
-        const apiUrl = getConfig('desktop_api_url', process.env.SCREENER_API_URL || 'http://localhost:8080');
-        return apiUrl.replace(/^http/, 'ws') + '/ws';
-    }
-
-    function connectToDesktop() {
-        const wsUrl = getDesktopWsUrl();
-
-        // If URL changed, disconnect old connection
-        if (desktopWs && currentWsUrl !== wsUrl) {
-            desktopWs.close();
-            desktopWs = null;
+    // Handle WebSocket upgrade for /desktop-push
+    server.on('upgrade', (req, socket, head) => {
+        const url = new URL(req.url, 'http://localhost');
+        if (url.pathname === '/desktop-push') {
+            wss.handleUpgrade(req, socket, head, (ws) => {
+                wss.emit('connection', ws, req);
+            });
         }
+    });
 
-        if (desktopWs && desktopWs.readyState === WebSocket.OPEN) return;
+    wss.on('connection', (ws, req) => {
+        let authenticated = false;
+        console.log('Desktop push connection attempt');
 
-        currentWsUrl = wsUrl;
-
-        try {
-            desktopWs = new WebSocket(wsUrl);
-            desktopWs.binaryType = 'arraybuffer';
-
-            desktopWs.on('open', () => {
-                console.log(`Connected to desktop stream at ${wsUrl}`);
-            });
-
-            desktopWs.on('message', (data) => {
-                if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
-                    streamNamespace.emit('frame', data);
-                } else {
-                    try {
-                        const msg = JSON.parse(data.toString());
-                        streamNamespace.emit('signal', msg);
-                    } catch {}
-                }
-            });
-
-            desktopWs.on('close', () => {
-                console.log('Desktop stream disconnected');
-                desktopWs = null;
-                scheduleReconnect();
-            });
-
-            desktopWs.on('error', (err) => {
-                console.error('Desktop stream error:', err.message);
-                desktopWs = null;
-                scheduleReconnect();
-            });
-        } catch (err) {
-            console.error('Failed to connect to desktop stream:', err.message);
-            scheduleReconnect();
-        }
-    }
-
-    function scheduleReconnect() {
-        if (reconnectTimer) return;
-        reconnectTimer = setTimeout(() => {
-            reconnectTimer = null;
-            if (streamNamespace.sockets.size > 0) {
-                connectToDesktop();
+        // 10s auth timeout
+        const authTimeout = setTimeout(() => {
+            if (!authenticated) {
+                console.log('Desktop push auth timeout');
+                ws.close();
             }
-        }, 5000);
-    }
+        }, 10000);
 
-    // Expose a function to force reconnect (called when desktop URL changes)
-    function forceReconnect() {
-        if (desktopWs) {
-            desktopWs.close();
-            desktopWs = null;
-        }
-        if (streamNamespace.sockets.size > 0) {
-            connectToDesktop();
-        }
-    }
+        ws.on('message', (data, isBinary) => {
+            if (!authenticated) {
+                // First message must be JSON auth
+                clearTimeout(authTimeout);
+                try {
+                    const msg = JSON.parse(data.toString());
+                    const storedKey = getConfig('desktop_api_key', '');
 
-    streamNamespace.on('connection', (socket) => {
-        console.log(`Stream viewer connected: ${socket.id}`);
-        connectToDesktop();
+                    if (msg.type === 'auth' && storedKey && msg.apiKey === storedKey) {
+                        authenticated = true;
+                        desktopSocket = ws;
+                        setConfig('desktop_last_seen', new Date().toISOString());
+                        if (msg.hostname) setConfig('desktop_hostname', msg.hostname);
+                        console.log(`Desktop authenticated (hostname: ${msg.hostname || 'unknown'})`);
+                        ws.send(JSON.stringify({ type: 'auth_ok' }));
+                        return;
+                    }
+                } catch {}
 
-        socket.on('disconnect', () => {
-            console.log(`Stream viewer disconnected: ${socket.id}`);
-            if (streamNamespace.sockets.size === 0 && desktopWs) {
-                desktopWs.close();
-                desktopWs = null;
+                console.log('Desktop push auth failed');
+                ws.send(JSON.stringify({ type: 'auth_fail' }));
+                ws.close();
+                return;
             }
+
+            // Authenticated — handle frames and status
+            if (isBinary) {
+                // JPEG frame → relay to all browser viewers
+                streamNamespace.emit('frame', data);
+            } else {
+                // JSON status update
+                try {
+                    const status = JSON.parse(data.toString());
+                    if (status.type === 'status') {
+                        delete status.type;
+                        status._desktopOnline = true;
+                        lastStatus = status;
+                    }
+                } catch {}
+            }
+
+            // Update last seen periodically
+            setConfig('desktop_last_seen', new Date().toISOString());
+        });
+
+        ws.on('close', () => {
+            clearTimeout(authTimeout);
+            if (desktopSocket === ws) {
+                desktopSocket = null;
+                lastStatus = { _desktopOnline: false };
+                console.log('Desktop push disconnected');
+            }
+        });
+
+        ws.on('error', (err) => {
+            console.error('Desktop push error:', err.message);
         });
     });
 
-    return { forceReconnect };
+    // Browser viewers connect via Socket.IO /stream namespace
+    streamNamespace.on('connection', (socket) => {
+        console.log(`Stream viewer connected: ${socket.id}`);
+        socket.on('disconnect', () => {
+            console.log(`Stream viewer disconnected: ${socket.id}`);
+        });
+    });
+
+    return {
+        getLastStatus: () => lastStatus,
+        isDesktopConnected: () => desktopSocket !== null && desktopSocket.readyState === WebSocket.OPEN
+    };
 }
 
 module.exports = { setupStreamProxy };

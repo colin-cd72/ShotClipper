@@ -55,19 +55,11 @@ app.post('/register', (req, res) => {
     }
 
     const url = `http://${ip}:${port}`;
-    const previousUrl = getConfig('desktop_api_url');
-
     setConfig('desktop_api_url', url);
     setConfig('desktop_last_seen', new Date().toISOString());
     if (hostname) setConfig('desktop_hostname', hostname);
 
-    console.log(`Desktop registered: ${url} (was: ${previousUrl})`);
-
-    // Force stream reconnect if URL changed
-    if (previousUrl !== url && streamProxy) {
-        streamProxy.forceReconnect();
-    }
-
+    console.log(`Desktop registered: ${url}`);
     res.json({ registered: true, url });
 });
 
@@ -84,15 +76,8 @@ app.put('/panel/config', authMiddleware, adminOnly, (req, res) => {
         return res.status(400).json({ error: 'Expected object of key-value pairs' });
     }
 
-    const previousUrl = getConfig('desktop_api_url');
-
     for (const [key, value] of Object.entries(updates)) {
         setConfig(key, String(value));
-    }
-
-    // Force stream reconnect if desktop URL changed
-    if (updates.desktop_api_url && updates.desktop_api_url !== previousUrl && streamProxy) {
-        streamProxy.forceReconnect();
     }
 
     res.json({ updated: true, config: getAllConfig() });
@@ -102,39 +87,24 @@ app.get('/panel/connection', authMiddleware, (req, res) => {
     const url = getConfig('desktop_api_url', 'not configured');
     const lastSeen = getConfig('desktop_last_seen', 'never');
     const hostname = getConfig('desktop_hostname', 'unknown');
-    res.json({ url, lastSeen, hostname });
+    const connected = streamProxy.isDesktopConnected();
+    res.json({ url, lastSeen, hostname, connected });
 });
 
 // API proxy routes (require auth, resolve desktop URL dynamically)
 app.use('/api', authMiddleware, createApiProxy());
 
-// WebSocket stream relay (resolves desktop URL dynamically)
-const streamProxy = setupStreamProxy(io);
+// Push-based stream relay: desktop connects OUT to VPS
+const streamProxy = setupStreamProxy(io, server);
 
-// Socket.IO for real-time updates
+// Socket.IO for real-time updates — uses pushed status from desktop
 io.on('connection', (socket) => {
     console.log(`Client connected: ${socket.id}`);
 
-    // Poll desktop app status and broadcast
-    const statusInterval = setInterval(async () => {
-        try {
-            const desktopUrl = getConfig('desktop_api_url', 'http://localhost:8080');
-            const apiKey = getConfig('desktop_api_key', '');
-
-            const res = await fetch(`${desktopUrl}/api/status`, {
-                headers: { 'X-API-Key': apiKey },
-                signal: AbortSignal.timeout(5000)
-            });
-            if (res.ok) {
-                const status = await res.json();
-                status._desktopOnline = true;
-                socket.emit('status', status);
-            } else {
-                socket.emit('status', { _desktopOnline: false });
-            }
-        } catch {
-            socket.emit('status', { _desktopOnline: false });
-        }
+    // Send status from desktop push every 2s
+    const statusInterval = setInterval(() => {
+        const status = streamProxy.getLastStatus();
+        socket.emit('status', status);
     }, 2000);
 
     socket.on('disconnect', () => {
@@ -149,7 +119,6 @@ app.get('*', (req, res) => {
 });
 
 server.listen(PORT, () => {
-    const desktopUrl = getConfig('desktop_api_url', 'not configured');
-    console.log(`Screener Panel running on port ${PORT}`);
-    console.log(`Desktop API: ${desktopUrl}`);
+    console.log(`Shot Clipper Panel running on port ${PORT}`);
+    console.log(`Desktop connects via WebSocket to /desktop-push`);
 });

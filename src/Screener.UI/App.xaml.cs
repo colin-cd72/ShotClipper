@@ -31,6 +31,9 @@ using Screener.Upload.Providers;
 using Screener.Core.Persistence;
 using Screener.Core.Settings;
 using Screener.Golf.Detection;
+using Screener.Golf.Export;
+using Screener.Golf.Overlays;
+using Screener.Golf.Persistence;
 using Screener.Golf.Switching;
 using Serilog;
 
@@ -194,6 +197,14 @@ public partial class App : Application
         services.AddSingleton<AutoCutService>();
         services.AddSingleton<GolfSession>();
         services.AddSingleton<SequenceRecorder>();
+        services.AddSingleton<GolferRepository>();
+        services.AddSingleton<SessionRepository>();
+        services.AddSingleton<OverlayRepository>();
+        services.AddSingleton<OverlayCompositor>();
+        services.AddSingleton<ClipExportService>();
+
+        // Panel Relay (desktop → cloud push)
+        services.AddSingleton<PanelRelayService>();
 
         // ViewModels
         services.AddTransient<MainViewModel>();
@@ -206,11 +217,15 @@ public partial class App : Application
         services.AddTransient<InputConfigurationViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<SchedulerViewModel>();
+        services.AddTransient<GolferManagementViewModel>();
+        services.AddTransient<OverlaySettingsViewModel>();
 
         // Views
         services.AddSingleton<MainWindow>();
         services.AddTransient<SettingsWindow>();
         services.AddTransient<SchedulerWindow>();
+        services.AddTransient<GolferManagementWindow>();
+        services.AddTransient<OverlaySettingsWindow>();
     }
 
     protected override async void OnExit(ExitEventArgs e)

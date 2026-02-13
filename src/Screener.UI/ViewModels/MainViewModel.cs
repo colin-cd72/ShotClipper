@@ -25,6 +25,7 @@ using Screener.Golf.Persistence;
 using Screener.Golf.Switching;
 using Screener.Preview;
 using Screener.Scheduling;
+using Screener.Streaming;
 using Screener.UI.Views;
 
 namespace Screener.UI.ViewModels;
@@ -50,6 +51,9 @@ public partial class MainViewModel : ObservableObject
 
     // Upload service
     private readonly IUploadService _uploadService;
+
+    // Panel relay (desktop → cloud push)
+    private readonly PanelRelayService _panelRelayService;
 
     // Fullscreen preview
     private FullscreenPreviewWindow? _fullscreenWindow;
@@ -304,7 +308,8 @@ public partial class MainViewModel : ObservableObject
         SequenceRecorder sequenceRecorder,
         ClipExportService clipExportService,
         GolferRepository golferRepository,
-        IUploadService uploadService)
+        IUploadService uploadService,
+        PanelRelayService panelRelayService)
     {
         _serviceProvider = serviceProvider;
         _deviceManager = deviceManager;
@@ -323,6 +328,7 @@ public partial class MainViewModel : ObservableObject
         _clipExportService = clipExportService;
         _golferRepository = golferRepository;
         _uploadService = uploadService;
+        _panelRelayService = panelRelayService;
 
         // Check NDI availability
         var ndiOutput = _outputManager.GetOutput("ndi-output");
@@ -1172,6 +1178,15 @@ public partial class MainViewModel : ObservableObject
 
             await _streamingService.StartAsync(config);
 
+            // Wire panel relay into streaming service
+            if (_streamingService is WebRtcStreamingService webRtcService)
+            {
+                webRtcService.SetPanelRelay(_panelRelayService);
+            }
+
+            // Start panel relay if configured
+            await StartPanelRelayAsync();
+
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 StreamUrl = _streamingService.SignalingUri?.ToString();
@@ -1195,6 +1210,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            _panelRelayService.Stop();
             await _streamingService.StopAsync();
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
@@ -1206,6 +1222,43 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to stop streaming");
+        }
+    }
+
+    private async Task StartPanelRelayAsync()
+    {
+        try
+        {
+            var settingsRepo = _serviceProvider.GetService<SettingsRepository>();
+            if (settingsRepo == null) return;
+
+            var enabled = await settingsRepo.GetAsync<bool>(SettingsKeys.PanelRelayEnabled);
+            if (!enabled) return;
+
+            var panelUrl = await settingsRepo.GetAsync<string>(SettingsKeys.PanelRelayUrl);
+            var apiKey = await settingsRepo.GetAsync<string>(SettingsKeys.PanelRelayApiKey);
+
+            if (string.IsNullOrEmpty(panelUrl) || string.IsNullOrEmpty(apiKey))
+            {
+                _logger.LogWarning("Panel relay enabled but URL or API key not configured");
+                return;
+            }
+
+            _panelRelayService.Start(panelUrl, apiKey, () => new
+            {
+                type = "status",
+                streamingState = _streamingService.State.ToString(),
+                connectedViewers = _streamingService.ConnectedClients.Count,
+                isRecording = IsRecording,
+                swingCount = _golfSession.TotalSwings,
+                golferName = _golfSession.CurrentSession?.GolferDisplayName,
+                autoCutState = _autoCutService.State.ToString(),
+                isSessionActive = _golfSession.IsSessionActive
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start panel relay");
         }
     }
 

@@ -162,6 +162,11 @@ public static class SettingsKeys
     // API
     public const string ApiKey = "api.key";
 
+    // Panel Relay (desktop → VPS push)
+    public const string PanelRelayEnabled = "panel.enabled";
+    public const string PanelRelayUrl = "panel.url";
+    public const string PanelRelayApiKey = "panel.apiKey";
+
     // UI
     public const string WindowState = "ui.windowState";
     public const string WindowBounds = "ui.windowBounds";

@@ -159,6 +159,17 @@ public sealed class WebRtcStreamingService : IStreamingService
         _logger.LogInformation("WebRTC streaming stopped");
     }
 
+    // Panel relay (outbound push to cloud panel)
+    private PanelRelayService? _panelRelay;
+
+    /// <summary>
+    /// Set the panel relay service for pushing frames to the cloud panel.
+    /// </summary>
+    public void SetPanelRelay(PanelRelayService relay)
+    {
+        _panelRelay = relay;
+    }
+
     // UYVY→JPEG encoding state
     private int _streamWidth;
     private int _streamHeight;
@@ -166,7 +177,10 @@ public sealed class WebRtcStreamingService : IStreamingService
 
     public async Task PushFrameAsync(ReadOnlyMemory<byte> frameData, TimeSpan timestamp, CancellationToken ct = default)
     {
-        if (_state != StreamingState.Running || _viewers.IsEmpty || _config == null)
+        bool hasLocalViewers = _state == StreamingState.Running && !_viewers.IsEmpty && _config != null;
+        bool hasPanelRelay = _panelRelay?.IsConnected == true;
+
+        if (!hasLocalViewers && !hasPanelRelay)
             return;
 
         // Skip if still encoding the previous frame
@@ -275,7 +289,13 @@ public sealed class WebRtcStreamingService : IStreamingService
                 return;
             }
 
-            // Send to all connected viewers
+            // Send to panel relay (cloud push)
+            if (_panelRelay?.IsConnected == true)
+            {
+                _ = _panelRelay.SendFrameAsync(jpegBytes);
+            }
+
+            // Send to all connected local viewers
             var sendTasks = new List<Task>();
             foreach (var viewer in _viewers.Values)
             {
