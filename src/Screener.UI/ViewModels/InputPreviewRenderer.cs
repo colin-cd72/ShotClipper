@@ -45,6 +45,9 @@ public class InputPreviewRenderer : IDisposable
     // Golf auto-cut frame analysis callback
     private Action<ReadOnlyMemory<byte>, int, int>? _frameAnalysisCallback;
 
+    // BGRA frame callback for TransitionEngine
+    private Action<byte[], int, int>? _bgraFrameCallback;
+
     // The InputViewModel whose PreviewImage we update
     private readonly InputViewModel _input;
 
@@ -74,6 +77,15 @@ public class InputPreviewRenderer : IDisposable
     public void SetFrameAnalysisCallback(Action<ReadOnlyMemory<byte>, int, int>? callback)
     {
         _frameAnalysisCallback = callback;
+    }
+
+    /// <summary>
+    /// Set a callback that receives converted BGRA frame data (for TransitionEngine blending).
+    /// The callback receives (bgraData, width, height) at ~30fps on a thread pool thread.
+    /// </summary>
+    public void SetBgraFrameCallback(Action<byte[], int, int>? callback)
+    {
+        _bgraFrameCallback = callback;
     }
 
     /// <summary>
@@ -272,6 +284,9 @@ public class InputPreviewRenderer : IDisposable
                     }
 
                     _conversionInProgress = false;
+
+                    // Invoke BGRA callback for TransitionEngine
+                    _bgraFrameCallback?.Invoke(rgbArray, prevW, prevH);
 
                     // Hand off to CompositionTarget.Rendering
                     _readyWidth = prevW;

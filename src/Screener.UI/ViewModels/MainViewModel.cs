@@ -48,6 +48,8 @@ public partial class MainViewModel : ObservableObject
     // Multi-view preview state
     private readonly Dictionary<string, InputPreviewRenderer> _previewRenderers = new();
     private ICaptureDevice? _audioDevice;
+    private InputViewModel? _boundSource1;
+    private InputViewModel? _boundSource2;
 
     // Upload service
     private readonly IUploadService _uploadService;
@@ -67,6 +69,9 @@ public partial class MainViewModel : ObservableObject
     private readonly GolferRepository _golferRepository;
     private System.Windows.Threading.DispatcherTimer? _autoCutTickTimer;
 
+    // Transition engine
+    private readonly TransitionEngine _transitionEngine;
+
     // Child ViewModels
     public RecordingControlsViewModel RecordingControls { get; }
     public TimecodeViewModel Timecode { get; }
@@ -75,6 +80,29 @@ public partial class MainViewModel : ObservableObject
     public ClipBinViewModel ClipBin { get; }
     public UploadQueueViewModel UploadQueue { get; }
     public InputConfigurationViewModel InputConfiguration { get; }
+
+    [ObservableProperty]
+    private SwitcherViewModel? _switcher;
+
+    // Source preview images for the two-source switcher layout
+    [ObservableProperty]
+    private ImageSource? _source1PreviewImage;
+
+    [ObservableProperty]
+    private ImageSource? _source2PreviewImage;
+
+    [ObservableProperty]
+    private bool _source1HasSignal;
+
+    [ObservableProperty]
+    private bool _source2HasSignal;
+
+    // Preview monitor image (whichever source is NOT on program)
+    [ObservableProperty]
+    private ImageSource? _previewSourceImage;
+
+    [ObservableProperty]
+    private bool _previewSourceHasSignal;
 
     // Recording State
     [ObservableProperty]
@@ -309,7 +337,9 @@ public partial class MainViewModel : ObservableObject
         ClipExportService clipExportService,
         GolferRepository golferRepository,
         IUploadService uploadService,
-        PanelRelayService panelRelayService)
+        PanelRelayService panelRelayService,
+        TransitionEngine transitionEngine,
+        SwitcherViewModel switcherViewModel)
     {
         _serviceProvider = serviceProvider;
         _deviceManager = deviceManager;
@@ -329,6 +359,8 @@ public partial class MainViewModel : ObservableObject
         _golferRepository = golferRepository;
         _uploadService = uploadService;
         _panelRelayService = panelRelayService;
+        _transitionEngine = transitionEngine;
+        Switcher = switcherViewModel;
 
         // Check NDI availability
         var ndiOutput = _outputManager.GetOutput("ndi-output");
@@ -453,6 +485,9 @@ public partial class MainViewModel : ObservableObject
             PreviewColumns = enabled.Count <= 1 ? 1 : 2;
             HasNoSignal = false;
 
+            // Bind source preview images for the two-source switcher layout
+            BindSourcePreviews(enabled);
+
             // Start audio on selected input
             _audioPreviewService.Start();
             var selected = InputConfiguration.SelectedInput;
@@ -471,6 +506,81 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error rebuilding preview renderers");
+        }
+    }
+
+    /// <summary>
+    /// Bind the first two enabled inputs to Source1/Source2 preview images for the switcher layout.
+    /// Works regardless of golf mode — in golf mode, WireUpGolfFrameCallbacks rebinds by role.
+    /// </summary>
+    private void BindSourcePreviews(List<InputViewModel> enabled)
+    {
+        // Unsubscribe from previous inputs
+        if (_boundSource1 != null)
+            _boundSource1.PropertyChanged -= OnSource1PropertyChanged;
+        if (_boundSource2 != null)
+            _boundSource2.PropertyChanged -= OnSource2PropertyChanged;
+
+        _boundSource1 = null;
+        _boundSource2 = null;
+        Source1PreviewImage = null;
+        Source2PreviewImage = null;
+        Source1HasSignal = false;
+        Source2HasSignal = false;
+
+        if (enabled.Count > 0)
+        {
+            _boundSource1 = enabled[0];
+            Source1PreviewImage = _boundSource1.PreviewImage;
+            Source1HasSignal = _boundSource1.HasSignal;
+            _boundSource1.PropertyChanged += OnSource1PropertyChanged;
+        }
+
+        if (enabled.Count > 1)
+        {
+            _boundSource2 = enabled[1];
+            Source2PreviewImage = _boundSource2.PreviewImage;
+            Source2HasSignal = _boundSource2.HasSignal;
+            _boundSource2.PropertyChanged += OnSource2PropertyChanged;
+        }
+
+        UpdatePreviewSource();
+    }
+
+    private void OnSource1PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not InputViewModel input) return;
+        if (e.PropertyName == nameof(InputViewModel.PreviewImage))
+            Application.Current?.Dispatcher.BeginInvoke(() => { Source1PreviewImage = input.PreviewImage; UpdatePreviewSource(); });
+        else if (e.PropertyName == nameof(InputViewModel.HasSignal))
+            Application.Current?.Dispatcher.BeginInvoke(() => { Source1HasSignal = input.HasSignal; UpdatePreviewSource(); });
+    }
+
+    private void OnSource2PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not InputViewModel input) return;
+        if (e.PropertyName == nameof(InputViewModel.PreviewImage))
+            Application.Current?.Dispatcher.BeginInvoke(() => { Source2PreviewImage = input.PreviewImage; UpdatePreviewSource(); });
+        else if (e.PropertyName == nameof(InputViewModel.HasSignal))
+            Application.Current?.Dispatcher.BeginInvoke(() => { Source2HasSignal = input.HasSignal; UpdatePreviewSource(); });
+    }
+
+    /// <summary>
+    /// Update the preview monitor to show whichever source is NOT currently on program.
+    /// </summary>
+    private void UpdatePreviewSource()
+    {
+        if (ActiveSourceIndex == 0)
+        {
+            // Source 1 is on program, so preview shows Source 2
+            PreviewSourceImage = Source2PreviewImage;
+            PreviewSourceHasSignal = Source2HasSignal;
+        }
+        else
+        {
+            // Source 2 is on program, so preview shows Source 1
+            PreviewSourceImage = Source1PreviewImage;
+            PreviewSourceHasSignal = Source1HasSignal;
         }
     }
 
@@ -1660,6 +1770,28 @@ public partial class MainViewModel : ObservableObject
                     MotionLevel = _autoCutService.SwingDetector.LastSad);
             });
 
+            // Wire BGRA callback for TransitionEngine (Source A = golfer when index 0)
+            golferInput.PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
+            {
+                if (_switcherService.ActiveSourceIndex == 0)
+                    _transitionEngine.SetSourceA(bgra, w, h);
+                else
+                    _transitionEngine.SetSourceB(bgra, w, h);
+
+                Switcher?.SetProgramDimensions(w, h);
+            });
+
+            // Bind source 1 preview image
+            golferInput.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(InputViewModel.PreviewImage))
+                    Application.Current?.Dispatcher.BeginInvoke(() => Source1PreviewImage = golferInput.PreviewImage);
+                if (e.PropertyName == nameof(InputViewModel.HasSignal))
+                    Application.Current?.Dispatcher.BeginInvoke(() => Source1HasSignal = golferInput.HasSignal);
+            };
+            Source1PreviewImage = golferInput.PreviewImage;
+            Source1HasSignal = golferInput.HasSignal;
+
             // Wire audio from golfer camera for audio swing detection
             if (golferInput.PreviewRenderer.Device != null)
             {
@@ -1682,7 +1814,32 @@ public partial class MainViewModel : ObservableObject
 
                 _autoCutService.ProcessSource2Frame(data, w, h);
             });
+
+            // Wire BGRA callback for TransitionEngine (Source B = simulator when index 0)
+            simInput.PreviewRenderer.SetBgraFrameCallback((bgra, w, h) =>
+            {
+                if (_switcherService.ActiveSourceIndex == 0)
+                    _transitionEngine.SetSourceB(bgra, w, h);
+                else
+                    _transitionEngine.SetSourceA(bgra, w, h);
+
+                Switcher?.SetProgramDimensions(w, h);
+            });
+
+            // Bind source 2 preview image
+            simInput.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(InputViewModel.PreviewImage))
+                    Application.Current?.Dispatcher.BeginInvoke(() => Source2PreviewImage = simInput.PreviewImage);
+                if (e.PropertyName == nameof(InputViewModel.HasSignal))
+                    Application.Current?.Dispatcher.BeginInvoke(() => Source2HasSignal = simInput.HasSignal);
+            };
+            Source2PreviewImage = simInput.PreviewImage;
+            Source2HasSignal = simInput.HasSignal;
         }
+
+        // Start the switcher rendering loop
+        Switcher?.StartRendering();
     }
 
     private void ClearGolfFrameCallbacks()
@@ -1696,7 +1853,10 @@ public partial class MainViewModel : ObservableObject
         foreach (var renderer in _previewRenderers.Values)
         {
             renderer.SetFrameAnalysisCallback(null);
+            renderer.SetBgraFrameCallback(null);
         }
+
+        Switcher?.StopRendering();
     }
 
     private void OnGolferAudioSamplesReceived(object? sender, AudioSamplesEventArgs e)
@@ -1711,6 +1871,7 @@ public partial class MainViewModel : ObservableObject
         Application.Current.Dispatcher.Invoke(() =>
         {
             ActiveSourceIndex = e.NewSourceIndex;
+            UpdatePreviewSource();
 
             // Update IsProgramSource on all inputs
             foreach (var input in EnabledInputs)
@@ -1763,7 +1924,15 @@ public partial class MainViewModel : ObservableObject
     {
         Application.Current.Dispatcher.Invoke(() =>
         {
-            _switcherService.CutToSource(e.TargetSourceIndex, e.Reason);
+            // Use TransitionEngine for auto-cuts if switcher is active
+            if (Switcher != null)
+            {
+                Switcher.TriggerTransition();
+            }
+            else
+            {
+                _switcherService.CutToSource(e.TargetSourceIndex, e.Reason);
+            }
         });
     }
 

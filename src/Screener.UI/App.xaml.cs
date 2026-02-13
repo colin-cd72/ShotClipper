@@ -202,11 +202,13 @@ public partial class App : Application
         services.AddSingleton<OverlayRepository>();
         services.AddSingleton<OverlayCompositor>();
         services.AddSingleton<ClipExportService>();
+        services.AddSingleton<TransitionEngine>();
 
         // Panel Relay (desktop → cloud push)
         services.AddSingleton<PanelRelayService>();
 
         // ViewModels
+        services.AddTransient<SwitcherViewModel>();
         services.AddTransient<MainViewModel>();
         services.AddTransient<RecordingControlsViewModel>();
         services.AddTransient<TimecodeViewModel>();

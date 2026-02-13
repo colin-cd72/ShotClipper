@@ -182,6 +182,12 @@ public partial class InputViewModel : ObservableObject
     private InputRole _golfRole = InputRole.Unassigned;
 
     /// <summary>
+    /// Whether this input is the current program source (PGM).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isProgramSource;
+
+    /// <summary>
     /// Internal renderer managed by MainViewModel.
     /// </summary>
     internal InputPreviewRenderer? PreviewRenderer { get; set; }

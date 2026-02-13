@@ -25,6 +25,7 @@
             <converters:LevelToPixelHeightMultiConverter x:Key="InverseLevelToPixelHeightConverter" Inverse="True"/>
             <converters:LevelToBottomMarginMultiConverter x:Key="LevelToBottomMarginConverter"/>
             <converters:ByteArrayToImageConverter x:Key="ByteArrayToImageConverter"/>
+            <converters:EnumToBoolConverter x:Key="EnumToBoolConverter"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

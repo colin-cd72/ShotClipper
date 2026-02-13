@@ -499,215 +499,243 @@
                           Background="{DynamicResource BorderSubtleBrush}"
                           Visibility="{Binding IsLeftPanelVisible, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-            <!-- Center: Multi-View Preview -->
+            <!-- Center: vMix-Style Switcher Layout -->
             <Grid Grid.Column="2" Background="{DynamicResource BackgroundLevel0Brush}">
                 <Grid.RowDefinitions>
+                    <!-- Row 0: Preview | Transitions | Program -->
                     <RowDefinition Height="*"/>
+                    <!-- Row 1: Input Source Strip -->
                     <RowDefinition Height="Auto"/>
+                    <!-- Row 2: Status Bar -->
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Video Preview Area -->
-                <Border Grid.Row="0" Margin="8"
-                        BorderBrush="{Binding RecordingBorderBrush}"
-                        BorderThickness="{Binding RecordingBorderThickness}">
-                    <Grid>
-                        <!-- Multi-View Grid -->
-                        <ItemsControl ItemsSource="{Binding EnabledInputs}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <UniformGrid Columns="{Binding DataContext.PreviewColumns, RelativeSource={RelativeSource AncestorType=ItemsControl}}"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate DataType="{x:Type vm:InputViewModel}">
-                                    <Button Command="{Binding DataContext.SelectInputCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="CellBorder" Margin="2" Background="#111"
-                                                        BorderThickness="2" BorderBrush="Transparent"
-                                                        Cursor="Hand">
-                                                    <Grid>
-                                                        <Viewbox Stretch="Uniform">
-                                                            <Border Width="1920" Height="1080" Background="#1A1A1A">
-                                                                <Image Source="{Binding PreviewImage}" Stretch="Fill"
-                                                                       RenderOptions.BitmapScalingMode="LowQuality"/>
-                                                            </Border>
-                                                        </Viewbox>
-                                                        <!-- Input label overlay -->
-                                                        <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                                Background="#80000000" Padding="6,2" Margin="8,4">
-                                                            <TextBlock Text="{Binding ShortName}"
-                                                                       Foreground="White" FontSize="12" FontWeight="SemiBold"/>
-                                                        </Border>
-                                                        <!-- Golf role label -->
-                                                        <Border HorizontalAlignment="Left" VerticalAlignment="Top"
-                                                                Margin="8,28" Padding="4,1"
-                                                                Visibility="{Binding DataContext.IsGolfModeEnabled, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                            <Border.Style>
-                                                                <Style TargetType="Border">
-                                                                    <Setter Property="Background" Value="Transparent"/>
-                                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                                    <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding GolfRole}" Value="GolferCamera">
-                                                                            <Setter Property="Background" Value="#CC228B22"/>
-                                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                                        </DataTrigger>
-                                                                        <DataTrigger Binding="{Binding GolfRole}" Value="SimulatorOutput">
-                                                                            <Setter Property="Background" Value="#CC1E90FF"/>
-                                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                                        </DataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </Border.Style>
-                                                            <TextBlock Foreground="White" FontSize="10" FontWeight="Bold">
-                                                                <TextBlock.Style>
-                                                                    <Style TargetType="TextBlock">
-                                                                        <Setter Property="Text" Value=""/>
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding GolfRole}" Value="GolferCamera">
-                                                                                <Setter Property="Text" Value="GOLFER"/>
-                                                                            </DataTrigger>
-                                                                            <DataTrigger Binding="{Binding GolfRole}" Value="SimulatorOutput">
-                                                                                <Setter Property="Text" Value="SIMULATOR"/>
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </TextBlock.Style>
-                                                            </TextBlock>
-                                                        </Border>
-                                                        <!-- PGM badge -->
-                                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Background="#CCFF0000" Padding="6,2" Margin="8,4"
-                                                                CornerRadius="2"
-                                                                Visibility="{Binding IsProgramSource, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                            <TextBlock Text="PGM" Foreground="White" FontSize="10" FontWeight="Bold"/>
-                                                        </Border>
-                                                        <!-- No signal overlay -->
-                                                        <TextBlock Text="NO SIGNAL"
-                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                   FontSize="32" Foreground="#666"
-                                                                   Visibility="{Binding HasSignal, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                                        <!-- Format description overlay -->
-                                                        <TextBlock Text="{Binding FormatDescription}"
-                                                                   HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                                   Margin="0,0,8,4" Padding="4,2"
-                                                                   Background="#80000000" Foreground="#999"
-                                                                   FontSize="10"/>
-                                                    </Grid>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                                        <Setter TargetName="CellBorder" Property="BorderBrush" Value="#2196F3"/>
-                                                    </DataTrigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                <!-- Row 0: Preview (left) | Transition Controls (center) | Program (right) -->
+                <Grid Grid.Row="0" Margin="8,8,8,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                        <!-- No inputs enabled overlay -->
-                        <TextBlock Text="NO SIGNAL"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   FontSize="48" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   Visibility="{Binding HasNoSignal, Converter={StaticResource BoolToVisibilityConverter}}"/>
-
-                        <!-- Timecode Overlay -->
-                        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                Background="#80000000" Padding="12,6" Margin="20"
-                                IsHitTestVisible="False">
-                            <controls:TimecodeDisplay Timecode="{Binding Timecode.CurrentTimecode}"/>
-                        </Border>
-
-                        <!-- Recording Indicator -->
-                        <Border x:Name="RecIndicator" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                Padding="12,6" Margin="20"
-                                IsHitTestVisible="False"
-                                Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <!-- PREVIEW Monitor (left) — shows the non-program source -->
+                    <Border Grid.Column="0" CornerRadius="4">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.25" Color="Black"/>
+                        </Border.Effect>
+                        <Border CornerRadius="4" ClipToBounds="True">
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="Background" Value="#E0FF0000"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                    <Setter Property="BorderBrush" Value="#333"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsPaused}" Value="True">
-                                            <Setter Property="Background" Value="#E0CCAA00"/>
+                                        <!-- Green tally border when preview has signal -->
+                                        <DataTrigger Binding="{Binding PreviewSourceHasSignal}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#00CC00"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
-                            <StackPanel Orientation="Horizontal">
-                                <Ellipse Width="12" Height="12" Fill="White" Margin="0,0,8,0">
-                                    <Ellipse.Style>
-                                        <Style TargetType="Ellipse">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsPaused}" Value="True">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Ellipse.Style>
-                                </Ellipse>
-                                <TextBlock Foreground="White" FontWeight="Bold">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="REC"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsPaused}" Value="True">
-                                                    <Setter Property="Text" Value="PAUSED"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock Text="{Binding RecordingDuration, StringFormat=' {0:hh\\:mm\\:ss}'}"
-                                           Foreground="White" FontWeight="Bold"/>
-                            </StackPanel>
+                            <Grid Background="#111">
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="1920" Height="1080" Background="#1A1A1A">
+                                        <Image Source="{Binding PreviewSourceImage}" Stretch="Fill"
+                                               RenderOptions.BitmapScalingMode="LowQuality"/>
+                                    </Border>
+                                </Viewbox>
+                                <!-- PREVIEW label badge (green) -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Background="#CC00AA00" Padding="8,3" Margin="8,6"
+                                        CornerRadius="3">
+                                    <TextBlock Text="PREVIEW" Foreground="White" FontSize="10"
+                                               FontWeight="Bold"/>
+                                </Border>
+                                <!-- No signal -->
+                                <TextBlock Text="NO SIGNAL"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           FontSize="24" Foreground="#555"
+                                           Visibility="{Binding PreviewSourceHasSignal, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                            </Grid>
                         </Border>
-                    </Grid>
+                    </Border>
+
+                    <!-- Transition Controls (center) — vertical bar -->
+                    <controls:TransitionBar Grid.Column="1" DataContext="{Binding Switcher}"
+                                            VerticalAlignment="Center"/>
+
+                    <!-- PROGRAM Monitor (right) — shows the live/transition output -->
+                    <Border Grid.Column="2" CornerRadius="4"
+                            BorderBrush="{Binding RecordingBorderBrush}"
+                            BorderThickness="{Binding RecordingBorderThickness}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.25" Color="Black"/>
+                        </Border.Effect>
+                        <Border CornerRadius="4" BorderBrush="#CC0000" BorderThickness="2" ClipToBounds="True">
+                            <Grid>
+                                <controls:ProgramMonitorControl DataContext="{Binding Switcher}"/>
+
+                                <!-- PROGRAM label badge (red) -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Background="#CCFF0000" Padding="8,3" Margin="8,6"
+                                        CornerRadius="3" IsHitTestVisible="False">
+                                    <TextBlock Text="PROGRAM" Foreground="White" FontSize="10"
+                                               FontWeight="Bold"/>
+                                </Border>
+
+                                <!-- Timecode Overlay -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                        Background="#80000000" Padding="10,4" Margin="8,0,0,8"
+                                        CornerRadius="3" IsHitTestVisible="False">
+                                    <controls:TimecodeDisplay Timecode="{Binding Timecode.CurrentTimecode}"/>
+                                </Border>
+
+                                <!-- Recording Indicator -->
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Padding="8,4" Margin="8,6"
+                                        CornerRadius="3" IsHitTestVisible="False"
+                                        Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#E0FF0000"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPaused}" Value="True">
+                                                    <Setter Property="Background" Value="#E0CCAA00"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="10" Height="10" Fill="White" Margin="0,0,6,0">
+                                            <Ellipse.Style>
+                                                <Style TargetType="Ellipse">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPaused}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Ellipse.Style>
+                                        </Ellipse>
+                                        <TextBlock Foreground="White" FontWeight="Bold" FontSize="12">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="REC"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPaused}" Value="True">
+                                                            <Setter Property="Text" Value="PAUSED"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding RecordingDuration, StringFormat=' {0:hh\\:mm\\:ss}'}"
+                                                   Foreground="White" FontWeight="Bold" FontSize="12"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Border>
+                </Grid>
+
+                <!-- Row 1: Input Source Strip (scrollable horizontal thumbnails) -->
+                <Border Grid.Row="1" Background="{DynamicResource BackgroundLevel1Brush}"
+                        CornerRadius="4" Margin="8,0,8,4" Padding="6,4">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding EnabledInputs}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="3,2" CornerRadius="4" Cursor="Hand"
+                                            Background="{DynamicResource BackgroundLevel2Brush}"
+                                            MouseLeftButtonDown="OnInputThumbnailClick"
+                                            Tag="{Binding}">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.2" Color="Black"/>
+                                        </Border.Effect>
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderThickness" Value="2"/>
+                                                <Setter Property="BorderBrush" Value="Transparent"/>
+                                                <Style.Triggers>
+                                                    <!-- Red border when on program -->
+                                                    <DataTrigger Binding="{Binding IsProgramSource}" Value="True">
+                                                        <Setter Property="BorderBrush" Value="#FF0000"/>
+                                                    </DataTrigger>
+                                                    <!-- Hover lift effect -->
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel Width="150">
+                                            <!-- Thumbnail preview -->
+                                            <Viewbox Stretch="Uniform" Height="84">
+                                                <Border Width="1920" Height="1080" Background="#1A1A1A">
+                                                    <Image Source="{Binding PreviewImage}" Stretch="Fill"
+                                                           RenderOptions.BitmapScalingMode="LowQuality"/>
+                                                </Border>
+                                            </Viewbox>
+                                            <!-- Source name + status -->
+                                            <Grid Margin="6,3,6,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding ShortName}"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                                           FontSize="10" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <!-- PGM badge on thumbnail -->
+                                                <Border Grid.Column="1" Padding="4,1" CornerRadius="2"
+                                                        VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsProgramSource}" Value="True">
+                                                                    <Setter Property="Background" Value="#CCFF0000"/>
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="PGM" Foreground="White" FontSize="8" FontWeight="Bold"/>
+                                                </Border>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Border>
 
-                <!-- Golf Switcher Panel (visible in golf mode) -->
-                <Border Grid.Row="1" Background="{DynamicResource BackgroundLevel1Brush}"
-                        BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0"
-                        Padding="8,6"
-                        Visibility="{Binding IsGolfModeEnabled, Converter={StaticResource BoolToVisibilityConverter}}">
+                <!-- Row 2: Status Bar (Golf state, input status) -->
+                <Border Grid.Row="2" Background="{DynamicResource BackgroundLevel1Brush}" Padding="8,4">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- CUT to Source 1 (Golfer) -->
-                        <Button Grid.Column="0" Command="{Binding CutToSource1Command}"
-                                Width="120" Height="40" Margin="4,0"
-                                FontSize="13" FontWeight="Bold" Cursor="Hand">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Background" Value="{DynamicResource BackgroundLevel3Brush}"/>
-                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-                                    <Setter Property="Content" Value="GOLFER"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
-                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ActiveSourceIndex}" Value="0">
-                                            <Setter Property="BorderBrush" Value="#FF0000"/>
-                                            <Setter Property="Background" Value="#40FF0000"/>
-                                            <Setter Property="Content" Value="GOLFER (LIVE)"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                        <!-- Input Status -->
+                        <TextBlock Grid.Column="0" Text="{Binding InputStatus}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" FontSize="11"/>
 
-                        <!-- Auto-Cut State -->
+                        <!-- Auto-Cut State (golf mode) -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
-                                    VerticalAlignment="Center">
-                            <Border Padding="8,4" CornerRadius="4" Margin="4,0">
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsGolfModeEnabled, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border Padding="6,2" CornerRadius="3" Margin="4,0">
                                 <Border.Style>
                                     <Style TargetType="Border">
                                         <Setter Property="Background" Value="{DynamicResource BackgroundLevel2Brush}"/>
@@ -723,29 +751,31 @@
                                 </Border.Style>
                                 <TextBlock Text="{Binding AutoCutStateText}"
                                            Foreground="{DynamicResource TextPrimaryBrush}"
-                                           FontSize="12" FontWeight="SemiBold"/>
+                                           FontSize="11" FontWeight="SemiBold"/>
                             </Border>
                         </StackPanel>
 
-                        <!-- Swing Counter -->
+                        <!-- Swing Counter (golf mode) -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
-                                    Margin="8,0">
+                                    Margin="8,0"
+                                    Visibility="{Binding IsGolfModeEnabled, Converter={StaticResource BoolToVisibilityConverter}}">
                             <TextBlock Text="Swings: " Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="14" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding SwingCount}" FontSize="20" FontWeight="Bold"
+                                       FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding SwingCount}" FontSize="14" FontWeight="Bold"
                                        Foreground="{DynamicResource AccentBlueBrush}"
                                        VerticalAlignment="Center"/>
                             <TextBlock Text="  Practice: " Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="12" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding PracticeSwingCount}" FontSize="14" FontWeight="SemiBold"
+                                       FontSize="10" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding PracticeSwingCount}" FontSize="12" FontWeight="SemiBold"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <!-- Session Status -->
-                        <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Center"
-                                    VerticalAlignment="Center">
-                            <Ellipse Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <!-- Session Status (golf mode) -->
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Margin="8,0"
+                                    Visibility="{Binding IsGolfModeEnabled, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Ellipse Width="7" Height="7" Margin="0,0,4,0" VerticalAlignment="Center">
                                 <Ellipse.Style>
                                     <Style TargetType="Ellipse">
                                         <Setter Property="Fill" Value="#666"/>
@@ -757,7 +787,7 @@
                                     </Style>
                                 </Ellipse.Style>
                             </Ellipse>
-                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"
+                            <TextBlock Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
                                        VerticalAlignment="Center">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -772,37 +802,49 @@
                             </TextBlock>
                         </StackPanel>
 
-                        <!-- CUT to Source 2 (Simulator) -->
-                        <Button Grid.Column="4" Command="{Binding CutToSource2Command}"
-                                Width="120" Height="40" Margin="4,0"
-                                FontSize="13" FontWeight="Bold" Cursor="Hand">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Background" Value="{DynamicResource BackgroundLevel3Brush}"/>
-                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
-                                    <Setter Property="Content" Value="SIMULATOR"/>
-                                    <Setter Property="BorderThickness" Value="2"/>
-                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ActiveSourceIndex}" Value="1">
-                                            <Setter Property="BorderBrush" Value="#FF0000"/>
-                                            <Setter Property="Background" Value="#40FF0000"/>
-                                            <Setter Property="Content" Value="SIMULATOR (LIVE)"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                        <!-- CUT buttons (golf mode quick access) -->
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding IsGolfModeEnabled, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Button Command="{Binding CutToSource1Command}"
+                                    Width="80" Height="24" Margin="2,0"
+                                    FontSize="10" FontWeight="Bold" Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="{DynamicResource BackgroundLevel3Brush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                        <Setter Property="Content" Value="GOLFER"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActiveSourceIndex}" Value="0">
+                                                <Setter Property="BorderBrush" Value="#FF0000"/>
+                                                <Setter Property="Background" Value="#40FF0000"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Command="{Binding CutToSource2Command}"
+                                    Width="80" Height="24" Margin="2,0"
+                                    FontSize="10" FontWeight="Bold" Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="{DynamicResource BackgroundLevel3Brush}"/>
+                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                                        <Setter Property="Content" Value="SIMULATOR"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ActiveSourceIndex}" Value="1">
+                                                <Setter Property="BorderBrush" Value="#FF0000"/>
+                                                <Setter Property="Background" Value="#40FF0000"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
                     </Grid>
-                </Border>
-
-                <!-- Preview Toolbar -->
-                <Border Grid.Row="2" Background="{DynamicResource BackgroundLevel1Brush}" Padding="8">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <TextBlock Text="{Binding InputStatus}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
                 </Border>
             </Grid>
 

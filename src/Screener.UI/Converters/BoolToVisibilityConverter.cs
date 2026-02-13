@@ -181,6 +181,28 @@ public class LevelToBottomMarginMultiConverter : IMultiValueConverter
     }
 }
 
+/// <summary>
+/// Converts an enum value to bool for RadioButton binding.
+/// ConverterParameter specifies the enum value name to compare against.
+/// </summary>
+public class EnumToBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value == null || parameter == null) return false;
+        return value.ToString() == parameter.ToString();
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool b && b && parameter != null)
+        {
+            return Enum.Parse(targetType, parameter.ToString()!);
+        }
+        return Binding.DoNothing;
+    }
+}
+
 public class MutedToOpacityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

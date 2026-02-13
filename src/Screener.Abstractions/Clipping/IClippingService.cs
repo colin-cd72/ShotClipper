@@ -55,6 +55,11 @@ public interface IClippingService
     Task<string> ExtractClipAsync(ClipDefinition clip, ClipExtractionOptions options, CancellationToken ct = default);
 
     /// <summary>
+    /// Set the active recording file path for clip extraction.
+    /// </summary>
+    void SetActiveRecording(string filePath);
+
+    /// <summary>
     /// Clear all markers (for new recording).
     /// </summary>
     void ClearMarkers();

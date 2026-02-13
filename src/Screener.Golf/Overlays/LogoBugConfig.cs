@@ -12,10 +12,10 @@ public class LogoBugConfig
     public LogoPosition Position { get; set; } = LogoPosition.TopRight;
 
     /// <summary>Custom X offset from edge (pixels). Used when Position is Custom.</summary>
-    public int CustomX { get; set; } = 20;
+    public double CustomX { get; set; } = 20;
 
     /// <summary>Custom Y offset from edge (pixels). Used when Position is Custom.</summary>
-    public int CustomY { get; set; } = 20;
+    public double CustomY { get; set; } = 20;
 
     /// <summary>Scale factor (0.1 to 2.0). Default 1.0 = original size.</summary>
     public double Scale { get; set; } = 1.0;
@@ -37,7 +37,7 @@ public class LogoBugConfig
             LogoPosition.TopRight => $"x=W-w-{Margin}:y={Margin}",
             LogoPosition.BottomLeft => $"x={Margin}:y=H-h-{Margin}",
             LogoPosition.BottomRight => $"x=W-w-{Margin}:y=H-h-{Margin}",
-            LogoPosition.Custom => $"x={CustomX}:y={CustomY}",
+            LogoPosition.Custom => $"x={(int)CustomX}:y={(int)CustomY}",
             _ => $"x=W-w-{Margin}:y={Margin}"
         };
     }

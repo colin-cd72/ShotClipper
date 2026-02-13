@@ -1,0 +1,115 @@
+<UserControl x:Class="Screener.UI.Views.Controls.ProgramMonitorControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             Background="Transparent">
+
+    <Viewbox Stretch="Uniform">
+        <Canvas x:Name="ProgramCanvas" Width="1920" Height="1080" ClipToBounds="True" Background="#1A1A1A">
+            <!-- Program video -->
+            <Image x:Name="ProgramVideoImage"
+                   Source="{Binding ProgramImage}"
+                   Width="1920" Height="1080"
+                   Canvas.Left="0" Canvas.Top="0"
+                   Stretch="Fill"
+                   RenderOptions.BitmapScalingMode="LowQuality"/>
+
+            <!-- Logo Bug (draggable) -->
+            <Image x:Name="LogoElement"
+                   Source="{Binding LogoImageSource}"
+                   Canvas.Left="{Binding LogoX}"
+                   Canvas.Top="{Binding LogoY}"
+                   Width="{Binding LogoDisplayWidth}"
+                   Height="{Binding LogoDisplayHeight}"
+                   Opacity="{Binding LogoOpacity}"
+                   Visibility="{Binding IsLogoVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                   Cursor="SizeAll"
+                   MouseLeftButtonDown="OnLogoDragStart"
+                   MouseMove="OnLogoDragMove"
+                   MouseLeftButtonUp="OnLogoDragEnd"/>
+
+            <!-- Lower Third (draggable) -->
+            <Border x:Name="LowerThirdElement"
+                    Canvas.Left="{Binding LowerThirdX}"
+                    Canvas.Top="{Binding LowerThirdY}"
+                    Visibility="{Binding IsLowerThirdVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Cursor="SizeAll"
+                    MouseLeftButtonDown="OnLowerThirdDragStart"
+                    MouseMove="OnLowerThirdDragMove"
+                    MouseLeftButtonUp="OnLowerThirdDragEnd">
+                <Border Background="#99000000" Padding="16,8" CornerRadius="2">
+                    <TextBlock Text="{Binding LowerThirdText}"
+                               Foreground="White" FontSize="32" FontWeight="SemiBold"/>
+                </Border>
+            </Border>
+
+            <!-- Tally border (red when live/recording) -->
+            <Rectangle x:Name="TallyBorder" Width="1920" Height="1080"
+                       Canvas.Left="0" Canvas.Top="0"
+                       Stroke="Transparent" StrokeThickness="4"
+                       Fill="Transparent" IsHitTestVisible="False"/>
+
+            <!-- REC indicator overlay -->
+            <Border Canvas.Right="20" Canvas.Top="20"
+                    Canvas.Left="1750"
+                    Padding="8,4"
+                    IsHitTestVisible="False"
+                    Visibility="{Binding DataContext.IsRecording, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="#E0FF0000"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.IsPaused, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                <Setter Property="Background" Value="#E0CCAA00"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="10" Height="10" Fill="White" Margin="0,0,6,0">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsPaused, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Foreground="White" FontWeight="Bold" FontSize="14">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="PGM"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsPaused, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Text" Value="PAUSED"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+
+            <!-- "NO SIGNAL" overlay when no program frame -->
+            <TextBlock Text="NO SIGNAL"
+                       Canvas.Left="810" Canvas.Top="510"
+                       FontSize="48" Foreground="#666"
+                       IsHitTestVisible="False">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ProgramImage}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Canvas>
+    </Viewbox>
+</UserControl>

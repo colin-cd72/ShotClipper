@@ -1,3 +1,63 @@
+# Screener — Video Capture & Golf Mode Application
+
+## Project Structure
+- `src/Screener.UI` — WPF desktop app (MVVM with CommunityToolkit.Mvvm, Microsoft.Extensions.Hosting DI)
+- `src/Screener.Abstractions` — Interfaces and shared types (IClippingService, IRecordingService, etc.)
+- `src/Screener.Capture.Blackmagic` — DeckLink SDK capture (COM interop, native DLL)
+- `src/Screener.Capture.Ndi` — NDI input capture
+- `src/Screener.Capture.Srt` — SRT input capture
+- `src/Screener.Core` — Shared services (settings, persistence, output)
+- `src/Screener.Clipping` — Clip marking and extraction (FFmpeg-based)
+- `src/Screener.Encoding` — FFmpeg encoding pipelines and hardware acceleration
+- `src/Screener.Recording` — Multi-input recording orchestration
+- `src/Screener.Streaming` — MJPEG-over-WebSocket streaming
+- `src/Screener.Timecode` — SMPTE 12M timecode (NTP, system, manual providers)
+- `src/Screener.Scheduling` — Quartz.NET scheduled recordings
+- `src/Screener.Upload` — Cloud upload (S3, Azure, GCS, Dropbox, Google Drive, Frame.io, FTP/SFTP)
+- `src/Screener.Preview` — Audio preview service
+- `src/Screener.Golf` — Golf mode: swing detection, auto-cut, sequence recording, overlays, clip export
+- `tests/Screener.Golf.Tests` — xUnit + Moq test suite for Golf module
+
+## Key Patterns
+- **MVVM**: `ObservableObject` base, `[ObservableProperty]`, `[RelayCommand]` source generators (CommunityToolkit.Mvvm 8.2.2)
+- **DI**: `Microsoft.Extensions.Hosting` with `ConfigureServices` in `App.xaml.cs`
+- **Database**: Dapper + SQLite (`DatabaseContext`, repository pattern)
+- **Central Package Management**: `Directory.Packages.props` for all NuGet versions
+- **Target Framework**: `net8.0-windows10.0.17763`
+- **Thread Safety**: `Application.Current.Dispatcher.Invoke()` for UI updates from background threads
+- **Dark Theme**: Resource dictionaries (BackgroundLevel0-3, AccentBlueBrush, BorderSubtleBrush, etc.)
+
+## Switcher UI Layout (vMix-style)
+The center column uses a broadcast-style layout inspired by vMix:
+- **Preview monitor** (left) — shows whichever source is NOT on program, green tally border. Binds to `MainViewModel.PreviewSourceImage`.
+- **Transition controls** (center) — vertical `TransitionBar` control (90px wide): CUT/DISS/DIP buttons, duration, AUTO, vertical T-bar slider, KEY toggle. DataContext = `SwitcherViewModel`.
+- **Program monitor** (right) — shows the live transition engine output via `ProgramMonitorControl`, red tally border. Binds to `SwitcherViewModel.ProgramImage`.
+- **Input source strip** (bottom) — scrollable horizontal thumbnails of all `EnabledInputs`. Each card shows preview image, source name, PGM badge. Click selects input.
+- **Status bar** — input status, auto-cut state, swing counter, session status, CUT buttons (golf mode).
+- `UpdatePreviewSource()` in `MainViewModel` swaps preview based on `ActiveSourceIndex`: when source 0 is program, preview shows source 1 and vice versa.
+
+## Golf Mode Architecture
+- **SwitcherService** — Tracks active program source, fires `ProgramSourceChanged` on cuts
+- **AutoCutService** — State machine: WaitingForSwing → SwingDetected → FollowingShot → ResetDetected → Cooldown
+- **SwingDetector** — Frame-to-frame SAD (Sum of Absolute Differences) spike detection against EMA baseline
+- **ResetDetector** — Idle reference comparison with consecutive idle frame counting
+- **FrameAnalyzer** — Pure static utility: ExtractLumaDownsampled, ComputeSadInRoi, ComputeSimilarity
+- **SequenceRecorder** — Listens to `ProgramSourceChanged` for swing in/out points, fires `SequenceCompleted`
+- **ClipExportService** — Orchestrates SequenceRecorder → IClippingService → OverlayCompositor for auto-export
+- **OverlayCompositor** — FFmpeg filter_complex for logo bugs + lower third text overlays
+- **GolferRepository / SessionRepository / OverlayRepository** — Dapper/SQLite persistence
+
+## Clipping Pipeline
+- **IClippingService** — Interface for clip marking (SetInPoint, SetOutPoint, AddChapterMarker) and extraction
+- **ClippingService** — FFmpeg-based implementation; `SetActiveRecording(path)` → `CreateClipAsync` → `ExtractClipAsync`
+- **MainViewModel** wires clipping: sets active recording on recording start, clears markers on stop, handles AddMarker/SetInPoint/SetOutPoint commands
+- **ClipBin** — `LiveMarkers` (ObservableCollection) displays markers during recording; `Clips` shows completed clips
+
+## Testing
+- **Framework**: xUnit 2.7, Moq 4.20, Microsoft.NET.Test.Sdk 17.9
+- **Test project**: `tests/Screener.Golf.Tests/Screener.Golf.Tests.csproj`
+- **Run tests**: `dotnet test tests/Screener.Golf.Tests`
+
 # Video Capture Issues - Debug Notes
 
 ## Current Status (Latest)
