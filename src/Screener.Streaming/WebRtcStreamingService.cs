@@ -35,6 +35,12 @@ public sealed class WebRtcStreamingService : IStreamingService
     // Lower third callback (set by desktop app to push text to SwitcherViewModel)
     private Action<string>? _setLowerThirdCallback;
 
+    // Remote control callbacks (set by desktop app for web panel control)
+    private Action<bool>? _toggleStreamCallback;
+    private Func<string?, Task>? _toggleRecordingCallback;
+    private Func<bool>? _isRecordingProvider;
+    private Func<bool>? _isStreamingProvider;
+
     private HttpListener? _httpListener;
     private StreamingConfiguration? _config;
     private StreamingState _state = StreamingState.Stopped;
@@ -79,6 +85,21 @@ public sealed class WebRtcStreamingService : IStreamingService
     public void SetLowerThirdCallback(Action<string> callback)
     {
         _setLowerThirdCallback = callback;
+    }
+
+    /// <summary>
+    /// Set callbacks for remote stream and recording control from the web panel.
+    /// </summary>
+    public void SetRemoteControlCallbacks(
+        Action<bool>? toggleStream = null,
+        Func<string?, Task>? toggleRecording = null,
+        Func<bool>? isRecordingProvider = null,
+        Func<bool>? isStreamingProvider = null)
+    {
+        _toggleStreamCallback = toggleStream;
+        _toggleRecordingCallback = toggleRecording;
+        _isRecordingProvider = isRecordingProvider;
+        _isStreamingProvider = isStreamingProvider;
     }
 
     public async Task StartAsync(StreamingConfiguration config, CancellationToken ct = default)
@@ -514,6 +535,10 @@ public sealed class WebRtcStreamingService : IStreamingService
                 await HandleSetLowerThird(context);
             else if (path == "/api/lowerthird" && method == "DELETE")
                 await HandleClearLowerThird(context);
+            else if (path == "/api/stream" && method == "POST")
+                await HandleToggleStream(context);
+            else if (path == "/api/recording" && method == "POST")
+                await HandleToggleRecording(context);
             else
                 await WriteJsonResponse(context, 404, new { error = "Not found" });
         }
@@ -684,6 +709,37 @@ public sealed class WebRtcStreamingService : IStreamingService
     {
         _setLowerThirdCallback?.Invoke("");
         await WriteJsonResponse(context, 200, new { text = "" });
+    }
+
+    private async Task HandleToggleStream(HttpListenerContext context)
+    {
+        var body = await ReadJsonBody<StreamToggleRequest>(context);
+        if (body == null) return;
+
+        if (_toggleStreamCallback == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Stream control not available" });
+            return;
+        }
+
+        _toggleStreamCallback(body.Enabled);
+        await WriteJsonResponse(context, 200, new { enabled = body.Enabled });
+    }
+
+    private async Task HandleToggleRecording(HttpListenerContext context)
+    {
+        var body = await ReadJsonBody<RecordingToggleRequest>(context);
+        if (body == null) return;
+
+        if (_toggleRecordingCallback == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Recording control not available" });
+            return;
+        }
+
+        await _toggleRecordingCallback(body.Enabled ? body.Name : null);
+        var isRecording = _isRecordingProvider?.Invoke() ?? false;
+        await WriteJsonResponse(context, 200, new { recording = isRecording });
     }
 
     private async Task HandleGetOverlays(HttpListenerContext context)
@@ -1325,6 +1381,23 @@ public class GolferImportRequest
 public class LowerThirdRequest
 {
     public string? Text { get; set; }
+}
+
+/// <summary>
+/// Request body for POST /api/stream.
+/// </summary>
+public class StreamToggleRequest
+{
+    public bool Enabled { get; set; }
+}
+
+/// <summary>
+/// Request body for POST /api/recording.
+/// </summary>
+public class RecordingToggleRequest
+{
+    public bool Enabled { get; set; }
+    public string? Name { get; set; }
 }
 
 internal class ViewerSession

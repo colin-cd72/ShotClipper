@@ -3,6 +3,8 @@
 const DashboardPage = {
     streamSocket: null,
     durationInterval: null,
+    _isStreaming: false,
+    _isRecording: false,
 
     render(container) {
         container.innerHTML = `
@@ -36,7 +38,10 @@ const DashboardPage = {
                     <div class="card">
                         <div class="card-header">
                             <h3>Live Stream</h3>
-                            <span id="dash-viewers" class="badge badge-blue">0 viewers</span>
+                            <div style="display:flex;gap:8px;align-items:center">
+                                <span id="dash-viewers" class="badge badge-blue">0 viewers</span>
+                                <button class="btn btn-sm" id="dash-stream-toggle">Start Stream</button>
+                            </div>
                         </div>
                         <div class="stream-container">
                             <img id="stream-frame" alt="Live Stream" style="display:none">
@@ -70,6 +75,18 @@ const DashboardPage = {
                     </div>
 
                     <div class="card">
+                        <div class="card-header">
+                            <h3>Recording</h3>
+                            <button class="btn btn-sm" id="dash-rec-toggle">Start Recording</button>
+                        </div>
+                        <div id="dash-rec-name-row" style="display:none;margin-bottom:8px">
+                            <label>Recording Name (optional)</label>
+                            <input type="text" id="dash-rec-name" placeholder="e.g. Session 1">
+                        </div>
+                        <div id="dash-rec-status" style="font-size:13px;color:var(--text-secondary)">Not recording</div>
+                    </div>
+
+                    <div class="card">
                         <div class="card-header"><h3>Cut History</h3></div>
                         <div id="dash-history" style="max-height:200px;overflow-y:auto">
                             <p style="color:var(--text-secondary);font-size:13px">No cuts yet</p>
@@ -79,7 +96,102 @@ const DashboardPage = {
             </div>
         `;
 
+        document.getElementById('dash-stream-toggle').addEventListener('click', () => this.toggleStream());
+        document.getElementById('dash-rec-toggle').addEventListener('click', () => this.toggleRecording());
+
         this.connectStream();
+    },
+
+    async toggleStream() {
+        const btn = document.getElementById('dash-stream-toggle');
+        const newState = !this._isStreaming;
+        btn.disabled = true;
+        btn.textContent = newState ? 'Starting...' : 'Stopping...';
+
+        try {
+            const res = await api('/stream', {
+                method: 'POST',
+                body: JSON.stringify({ enabled: newState })
+            });
+            if (!res.ok) throw new Error('Failed');
+        } catch (err) {
+            alert('Error toggling stream: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            this.updateStreamButton();
+        }
+    },
+
+    async toggleRecording() {
+        const btn = document.getElementById('dash-rec-toggle');
+        const nameRow = document.getElementById('dash-rec-name-row');
+        const nameInput = document.getElementById('dash-rec-name');
+
+        if (!this._isRecording) {
+            // Show name input if hidden, then start on second click
+            if (nameRow.style.display === 'none') {
+                nameRow.style.display = 'block';
+                nameInput.focus();
+                return;
+            }
+        }
+
+        const newState = !this._isRecording;
+        btn.disabled = true;
+        btn.textContent = newState ? 'Starting...' : 'Stopping...';
+
+        try {
+            const body = { enabled: newState };
+            if (newState && nameInput.value.trim()) {
+                body.name = nameInput.value.trim();
+            }
+
+            const res = await api('/recording', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+            if (!res.ok) throw new Error('Failed');
+
+            nameRow.style.display = 'none';
+            nameInput.value = '';
+        } catch (err) {
+            alert('Error toggling recording: ' + err.message);
+        } finally {
+            btn.disabled = false;
+            this.updateRecordingButton();
+        }
+    },
+
+    updateStreamButton() {
+        const btn = document.getElementById('dash-stream-toggle');
+        if (!btn) return;
+        if (this._isStreaming) {
+            btn.textContent = 'Stop Stream';
+            btn.className = 'btn btn-sm btn-danger';
+        } else {
+            btn.textContent = 'Start Stream';
+            btn.className = 'btn btn-sm btn-primary';
+        }
+    },
+
+    updateRecordingButton() {
+        const btn = document.getElementById('dash-rec-toggle');
+        const nameRow = document.getElementById('dash-rec-name-row');
+        const statusEl = document.getElementById('dash-rec-status');
+        if (!btn) return;
+        if (this._isRecording) {
+            btn.textContent = 'Stop Recording';
+            btn.className = 'btn btn-sm btn-danger';
+            if (nameRow) nameRow.style.display = 'none';
+            if (statusEl) statusEl.style.color = 'var(--accent-green)';
+        } else {
+            btn.textContent = 'Start Recording';
+            btn.className = 'btn btn-sm btn-primary';
+            if (statusEl) {
+                statusEl.textContent = 'Not recording';
+                statusEl.style.color = 'var(--text-secondary)';
+            }
+        }
     },
 
     connectStream() {
@@ -112,6 +224,11 @@ const DashboardPage = {
             else if (isStreaming) { dotClass = 'live'; label = 'Online'; }
             else { dotClass = 'waiting'; label = 'Connected'; }
             statusEl.innerHTML = `<span class="status-dot ${dotClass}"></span>${label}`;
+
+            // Track streaming state for toggle button
+            const wasStreaming = this._isStreaming;
+            this._isStreaming = isStreaming;
+            if (wasStreaming !== isStreaming) this.updateStreamButton();
         }
 
         // Stats
@@ -121,7 +238,7 @@ const DashboardPage = {
         const practiceEl = document.getElementById('dash-practice');
         if (practiceEl) practiceEl.textContent = status.practiceSwingCount || 0;
 
-        // Recording
+        // Recording status
         const recEl = document.getElementById('dash-recording');
         if (recEl) {
             if (status.isRecording) {
@@ -129,6 +246,16 @@ const DashboardPage = {
             } else {
                 recEl.innerHTML = '<span class="badge badge-red">Off</span>';
             }
+        }
+
+        // Track recording state for toggle button
+        const wasRecording = this._isRecording;
+        this._isRecording = !!status.isRecording;
+        if (wasRecording !== this._isRecording) this.updateRecordingButton();
+
+        const recStatusEl = document.getElementById('dash-rec-status');
+        if (recStatusEl && status.isRecording) {
+            recStatusEl.textContent = status.recordingStatusText || 'Recording...';
         }
 
         // Viewers

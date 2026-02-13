@@ -1406,7 +1406,7 @@ public partial class MainViewModel : ObservableObject
 
             await _streamingService.StartAsync(config);
 
-            // Wire panel relay and lower third callback into streaming service
+            // Wire panel relay, lower third, and remote control callbacks into streaming service
             if (_streamingService is WebRtcStreamingService webRtcService)
             {
                 webRtcService.SetPanelRelay(_panelRelayService);
@@ -1414,6 +1414,32 @@ public partial class MainViewModel : ObservableObject
                 {
                     Application.Current?.Dispatcher.Invoke(() => Switcher.LowerThirdText = text);
                 });
+                webRtcService.SetRemoteControlCallbacks(
+                    toggleStream: enabled =>
+                    {
+                        Application.Current?.Dispatcher.Invoke(() =>
+                        {
+                            if (IsStreaming != enabled)
+                                IsStreaming = enabled;
+                        });
+                    },
+                    toggleRecording: async name =>
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(async () =>
+                        {
+                            if (name != null && !IsRecording)
+                            {
+                                RecordingName = name;
+                                await ToggleRecordingCommand.ExecuteAsync(null);
+                            }
+                            else if (name == null && IsRecording)
+                            {
+                                await StopRecordingCommand.ExecuteAsync(null);
+                            }
+                        });
+                    },
+                    isRecordingProvider: () => IsRecording,
+                    isStreamingProvider: () => IsStreaming);
             }
 
             // Start panel relay if configured

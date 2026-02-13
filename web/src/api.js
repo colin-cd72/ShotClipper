@@ -72,6 +72,8 @@ function createApiProxy() {
     router.all('/golfers/import', proxyRequest);
     router.all('/golfers/:id', proxyRequest);
     router.all('/lowerthird', proxyRequest);
+    router.all('/stream', proxyRequest);
+    router.all('/recording', proxyRequest);
     router.all('/overlays', proxyRequest);
     router.all('/overlays/:type', proxyRequest);
     router.all('/overlays/logo', proxyRequest);
