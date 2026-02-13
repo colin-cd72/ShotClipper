@@ -14,6 +14,9 @@ const App = {
     },
 
     init() {
+        // Always attach login/register form handlers
+        this.setupAuth();
+
         // Check auth
         if (!Auth.isLoggedIn()) {
             this.showLogin();
@@ -22,7 +25,6 @@ const App = {
 
         this.hideLogin();
         this.setupNav();
-        this.setupAuth();
         this.connectSocket();
 
         // Route to initial page
