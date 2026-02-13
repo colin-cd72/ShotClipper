@@ -91,11 +91,11 @@ app.get('/panel/connection', authMiddleware, (req, res) => {
     res.json({ url, lastSeen, hostname, connected });
 });
 
-// API proxy routes (require auth, resolve desktop URL dynamically)
-app.use('/api', authMiddleware, createApiProxy());
-
-// Push-based stream relay: desktop connects OUT to VPS
+// Push-based stream relay: desktop connects OUT to VPS (must init before API proxy)
 const streamProxy = setupStreamProxy(io, server);
+
+// API proxy routes — uses WebSocket relay when desktop connected, HTTP fallback
+app.use('/api', authMiddleware, createApiProxy(streamProxy));
 
 // Socket.IO for real-time updates — uses pushed status from desktop
 io.on('connection', (socket) => {

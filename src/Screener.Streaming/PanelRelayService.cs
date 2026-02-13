@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -12,6 +13,7 @@ namespace Screener.Streaming;
 public sealed class PanelRelayService : IDisposable
 {
     private readonly ILogger<PanelRelayService> _logger;
+    private readonly HttpClient _httpClient = new();
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _cts;
     private Task? _connectTask;
@@ -21,6 +23,8 @@ public sealed class PanelRelayService : IDisposable
 
     private string? _panelUrl;
     private string? _apiKey;
+    private string? _localApiKey;
+    private int _localApiPort;
     private Func<object>? _statusProvider;
 
     public bool IsConnected => _authenticated && _ws?.State == WebSocketState.Open;
@@ -47,6 +51,15 @@ public sealed class PanelRelayService : IDisposable
         _statusTask = Task.Run(() => StatusLoop(_cts.Token));
 
         _logger.LogInformation("Panel relay started → {Url}", _panelUrl);
+    }
+
+    /// <summary>
+    /// Set the local API port and key so the relay can forward requests to the desktop's own HttpListener.
+    /// </summary>
+    public void SetLocalApi(int port, string? apiKey = null)
+    {
+        _localApiPort = port;
+        _localApiKey = apiKey;
     }
 
     /// <summary>
@@ -91,14 +104,8 @@ public sealed class PanelRelayService : IDisposable
             {
                 await ConnectAndAuthenticate(ct);
 
-                // Stay connected — read messages (auth_ok, etc.)
-                var buffer = new byte[1024];
-                while (_ws?.State == WebSocketState.Open && !ct.IsCancellationRequested)
-                {
-                    var result = await _ws.ReceiveAsync(buffer, ct);
-                    if (result.MessageType == WebSocketMessageType.Close)
-                        break;
-                }
+                // Stay connected — read messages (auth_ok, api_request, etc.)
+                await ReceiveLoop(ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -118,6 +125,91 @@ public sealed class PanelRelayService : IDisposable
                 _logger.LogDebug("Panel relay reconnecting in 5s...");
                 await Task.Delay(5000, ct);
             }
+        }
+    }
+
+    private async Task ReceiveLoop(CancellationToken ct)
+    {
+        var buffer = new byte[65536];
+        while (_ws?.State == WebSocketState.Open && !ct.IsCancellationRequested)
+        {
+            var result = await _ws.ReceiveAsync(buffer, ct);
+            if (result.MessageType == WebSocketMessageType.Close)
+                break;
+
+            if (result.MessageType == WebSocketMessageType.Text)
+            {
+                var text = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                try
+                {
+                    using var doc = JsonDocument.Parse(text);
+                    var type = doc.RootElement.GetProperty("type").GetString();
+                    if (type == "api_request")
+                    {
+                        var id = doc.RootElement.GetProperty("id").GetString()!;
+                        var method = doc.RootElement.GetProperty("method").GetString()!;
+                        var path = doc.RootElement.GetProperty("path").GetString()!;
+                        doc.RootElement.TryGetProperty("body", out var bodyElem);
+                        var body = bodyElem.ValueKind == JsonValueKind.String ? bodyElem.GetString() : null;
+
+                        // Handle in background so receive loop continues
+                        _ = HandleApiRequestAsync(id, method, path, body);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug("Failed to parse relay message: {Message}", ex.Message);
+                }
+            }
+        }
+    }
+
+    private async Task HandleApiRequestAsync(string id, string method, string path, string? body)
+    {
+        try
+        {
+            if (_localApiPort == 0)
+            {
+                await SendApiResponse(id, 503, "{\"error\":\"Local API port not configured\"}");
+                return;
+            }
+
+            var url = $"http://localhost:{_localApiPort}{path}";
+            var request = new HttpRequestMessage(new HttpMethod(method), url);
+
+            if (body != null && (method == "POST" || method == "PUT" || method == "PATCH"))
+                request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+            if (!string.IsNullOrEmpty(_localApiKey))
+                request.Headers.TryAddWithoutValidation("X-API-Key", _localApiKey);
+
+            var response = await _httpClient.SendAsync(request);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            await SendApiResponse(id, (int)response.StatusCode, responseBody);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "API relay failed: {Method} {Path}", method, path);
+            await SendApiResponse(id, 502, JsonSerializer.Serialize(new { error = ex.Message }));
+        }
+    }
+
+    private async Task SendApiResponse(string id, int status, string body)
+    {
+        if (!_authenticated || _ws?.State != WebSocketState.Open)
+            return;
+
+        try
+        {
+            var msg = JsonSerializer.Serialize(new { type = "api_response", id, status, body });
+            await _ws.SendAsync(
+                Encoding.UTF8.GetBytes(msg),
+                WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        catch
+        {
+            _authenticated = false;
         }
     }
 

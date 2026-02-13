@@ -1,4 +1,5 @@
 const WebSocket = require('ws');
+const crypto = require('crypto');
 const { getConfig, setConfig } = require('./db');
 
 /**
@@ -10,6 +11,7 @@ function setupStreamProxy(io, server) {
     const wss = new WebSocket.Server({ noServer: true });
     let desktopSocket = null;
     let lastStatus = { _desktopOnline: false };
+    const pendingRequests = new Map(); // id → { resolve, reject, timer }
 
     // Handle WebSocket upgrade for /desktop-push
     server.on('upgrade', (req, socket, head) => {
@@ -58,18 +60,25 @@ function setupStreamProxy(io, server) {
                 return;
             }
 
-            // Authenticated — handle frames and status
+            // Authenticated — handle frames, status, and API responses
             if (isBinary) {
                 // JPEG frame → relay to all browser viewers
                 streamNamespace.emit('frame', data);
             } else {
-                // JSON status update
+                // JSON message
                 try {
-                    const status = JSON.parse(data.toString());
-                    if (status.type === 'status') {
-                        delete status.type;
-                        status._desktopOnline = true;
-                        lastStatus = status;
+                    const msg = JSON.parse(data.toString());
+                    if (msg.type === 'status') {
+                        delete msg.type;
+                        msg._desktopOnline = true;
+                        lastStatus = msg;
+                    } else if (msg.type === 'api_response' && msg.id) {
+                        const pending = pendingRequests.get(msg.id);
+                        if (pending) {
+                            clearTimeout(pending.timer);
+                            pendingRequests.delete(msg.id);
+                            pending.resolve({ status: msg.status, body: msg.body });
+                        }
                     }
                 } catch {}
             }
@@ -100,9 +109,35 @@ function setupStreamProxy(io, server) {
         });
     });
 
+    function sendApiRequest(method, path, body) {
+        return new Promise((resolve, reject) => {
+            if (!desktopSocket || desktopSocket.readyState !== WebSocket.OPEN) {
+                return reject(new Error('Desktop not connected'));
+            }
+
+            const id = crypto.randomUUID();
+            const timer = setTimeout(() => {
+                pendingRequests.delete(id);
+                reject(new Error('API relay timeout (15s)'));
+            }, 15000);
+
+            pendingRequests.set(id, { resolve, reject, timer });
+
+            const msg = JSON.stringify({ type: 'api_request', id, method, path, body });
+            desktopSocket.send(msg, (err) => {
+                if (err) {
+                    clearTimeout(timer);
+                    pendingRequests.delete(id);
+                    reject(err);
+                }
+            });
+        });
+    }
+
     return {
         getLastStatus: () => lastStatus,
-        isDesktopConnected: () => desktopSocket !== null && desktopSocket.readyState === WebSocket.OPEN
+        isDesktopConnected: () => desktopSocket !== null && desktopSocket.readyState === WebSocket.OPEN,
+        sendApiRequest
     };
 }
 

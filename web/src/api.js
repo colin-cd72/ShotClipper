@@ -3,9 +3,10 @@ const { getConfig } = require('./db');
 
 /**
  * Creates proxy routes that forward requests to the desktop app's REST API.
- * Desktop URL and API key are resolved dynamically from the config DB on each request.
+ * When the desktop is connected via WebSocket push channel, requests are relayed
+ * through the WebSocket (works through NAT/firewall). Falls back to direct HTTP.
  */
-function createApiProxy() {
+function createApiProxy(streamProxy) {
     const router = express.Router();
 
     function getDesktopUrl() {
@@ -16,8 +17,34 @@ function createApiProxy() {
         return getConfig('desktop_api_key', process.env.SCREENER_API_KEY || '');
     }
 
-    // Generic proxy handler
+    // Generic proxy handler — tries WebSocket relay first, falls back to direct HTTP
     async function proxyRequest(req, res) {
+        // Try WebSocket relay if desktop is connected via push channel
+        if (streamProxy && streamProxy.isDesktopConnected()) {
+            try {
+                const body = ['POST', 'PUT', 'PATCH'].includes(req.method) && req.body
+                    ? JSON.stringify(req.body)
+                    : undefined;
+
+                const result = await streamProxy.sendApiRequest(req.method, req.originalUrl, body);
+                const statusCode = result.status || 200;
+
+                if (result.body) {
+                    try {
+                        const parsed = JSON.parse(result.body);
+                        return res.status(statusCode).json(parsed);
+                    } catch {
+                        return res.status(statusCode).send(result.body);
+                    }
+                }
+                return res.status(statusCode).json({});
+            } catch (err) {
+                console.error(`WebSocket relay error: ${req.method} ${req.originalUrl}`, err.message);
+                // Fall through to direct HTTP
+            }
+        }
+
+        // Direct HTTP fallback (works on LAN)
         const screenerApiUrl = getDesktopUrl();
         const apiKey = getApiKey();
         const targetUrl = `${screenerApiUrl}${req.originalUrl}`;

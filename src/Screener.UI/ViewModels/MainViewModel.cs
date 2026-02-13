@@ -1502,6 +1502,10 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            // Tell relay where the local REST API lives so it can forward requests
+            var settings = await _settingsService.GetSettingsAsync();
+            _panelRelayService.SetLocalApi(settings.StreamingPort, apiKey);
+
             _panelRelayService.Start(panelUrl, apiKey, () => new
             {
                 type = "status",
