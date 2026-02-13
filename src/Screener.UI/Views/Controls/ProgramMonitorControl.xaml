@@ -95,14 +95,10 @@
                 </StackPanel>
             </Border>
 
-            <!-- "NO SIGNAL" overlay when no program frame -->
-            <TextBlock Text="NO SIGNAL"
-                       Canvas.Left="810" Canvas.Top="510"
-                       FontSize="48" FontWeight="SemiBold"
-                       Foreground="{DynamicResource NoSignalBrush}"
-                       IsHitTestVisible="False">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+            <!-- NO SIGNAL overlay -->
+            <Grid Canvas.Left="0" Canvas.Top="0" Width="1920" Height="1080" IsHitTestVisible="False">
+                <Grid.Style>
+                    <Style TargetType="Grid">
                         <Setter Property="Visibility" Value="Collapsed"/>
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ProgramImage}" Value="{x:Null}">
@@ -110,8 +106,17 @@
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
-                </TextBlock.Style>
-            </TextBlock>
+                </Grid.Style>
+                <!-- Crosshatch pattern fill -->
+                <Rectangle Fill="{DynamicResource NoSignalCrosshatchBrush}"/>
+                <!-- Camera icon (Segoe MDL2 Assets) + text -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="72"
+                               Foreground="{DynamicResource NoSignalBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="NO SIGNAL" FontSize="48" FontWeight="SemiBold"
+                               Foreground="{DynamicResource NoSignalBrush}" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+                </StackPanel>
+            </Grid>
         </Canvas>
     </Viewbox>
 </UserControl>

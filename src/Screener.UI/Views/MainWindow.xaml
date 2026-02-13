@@ -251,6 +251,36 @@
                             FontSize="11" VerticalAlignment="Center"
                             Style="{DynamicResource SecondaryButtonStyle}"/>
                 </StackPanel>
+
+                <!-- Separator -->
+                <Border Width="1" Height="32" Margin="8,0" Opacity="0.4">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="Transparent" Offset="0"/>
+                            <GradientStop Color="{StaticResource BorderMedium}" Offset="0.5"/>
+                            <GradientStop Color="Transparent" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- Recording Controls (compact toolbar version) -->
+                <Button Style="{DynamicResource RecordButtonStyle}"
+                        Command="{Binding ToggleRecordingCommand}"
+                        Width="36" Height="36" Margin="4,0"
+                        ToolTip="Toggle Recording (F9)"/>
+
+                <TextBox Text="{Binding RecordingName, UpdateSourceTrigger=PropertyChanged}"
+                         Width="140" Height="28" Margin="4,0"
+                         Background="{DynamicResource BackgroundLevel0Brush}"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
+                         BorderBrush="{DynamicResource BorderSubtleBrush}"
+                         Padding="6,4" FontSize="11" VerticalContentAlignment="Center"
+                         ToolTip="Recording Name"/>
+
+                <TextBlock Text="{Binding RecordingStatusText}"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           VerticalAlignment="Center" FontSize="12" Margin="4,0"
+                           MinWidth="60"/>
             </StackPanel>
         </Border>
 
@@ -502,16 +532,16 @@
             <!-- Center: vMix-Style Switcher Layout -->
             <Grid Grid.Column="2" Background="{DynamicResource BackgroundLevel0Brush}">
                 <Grid.RowDefinitions>
-                    <!-- Row 0: Preview | Transitions | Program -->
-                    <RowDefinition Height="*"/>
-                    <!-- Row 1: Input Source Strip -->
+                    <!-- Row 0: Preview | Transitions | Program (constrained) -->
                     <RowDefinition Height="Auto"/>
+                    <!-- Row 1: Input Source Strip (takes remaining space) -->
+                    <RowDefinition Height="*"/>
                     <!-- Row 2: Status Bar -->
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Row 0: Preview (left) | Transition Controls (center) | Program (right) -->
-                <Grid Grid.Row="0" Margin="8,8,8,4">
+                <Grid Grid.Row="0" Margin="8,8,8,4" MaxHeight="340">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
@@ -555,12 +585,17 @@
                                     <TextBlock Text="{Binding PreviewSourceName}" Foreground="White"
                                                FontSize="10" FontWeight="SemiBold"/>
                                 </Border>
-                                <!-- No signal -->
-                                <TextBlock Text="NO SIGNAL"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           FontSize="24" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource NoSignalBrush}"
-                                           Visibility="{Binding PreviewSourceHasSignal, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                <!-- No signal overlay -->
+                                <Grid IsHitTestVisible="False"
+                                      Visibility="{Binding PreviewSourceHasSignal, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                    <Rectangle Fill="{DynamicResource NoSignalCrosshatchBrush}"/>
+                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                        <TextBlock Text="&#xE714;" FontFamily="Segoe MDL2 Assets" FontSize="36"
+                                                   Foreground="{DynamicResource NoSignalBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="NO SIGNAL" FontSize="18" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource NoSignalBrush}" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                         </Border>
                     </Border>
@@ -643,10 +678,10 @@
 
                 <!-- Row 1: Input Source Strip (scrollable horizontal thumbnails) -->
                 <Border Grid.Row="1" Background="{DynamicResource BackgroundLevel1Brush}"
-                        CornerRadius="4" Margin="8,0,8,4" Padding="6,4">
+                        CornerRadius="4" Margin="8,0,8,4" Padding="6,6">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                       <StackPanel Orientation="Horizontal">
-                        <ItemsControl ItemsSource="{Binding EnabledInputs}">
+                        <ItemsControl ItemsSource="{Binding InputConfiguration.Inputs}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal"/>
@@ -657,6 +692,7 @@
                                     <Border Margin="3,2" CornerRadius="4" Cursor="Hand"
                                             Background="{DynamicResource BackgroundLevel2Brush}"
                                             MouseLeftButtonDown="OnInputThumbnailClick"
+                                            MouseRightButtonDown="OnInputThumbnailRightClick"
                                             Tag="{Binding}">
                                         <Border.Effect>
                                             <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.3" Color="Black"/>
@@ -666,6 +702,10 @@
                                                 <Setter Property="BorderThickness" Value="2"/>
                                                 <Setter Property="BorderBrush" Value="Transparent"/>
                                                 <Style.Triggers>
+                                                    <!-- Dim disabled inputs -->
+                                                    <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                        <Setter Property="Opacity" Value="0.4"/>
+                                                    </DataTrigger>
                                                     <!-- Green border when on preview -->
                                                     <DataTrigger Binding="{Binding IsPreviewSource}" Value="True">
                                                         <Setter Property="BorderBrush" Value="{DynamicResource TallyGreenBrush}"/>
@@ -681,15 +721,21 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
-                                        <StackPanel Width="150">
+                                        <StackPanel Width="180">
                                             <!-- Thumbnail preview with vignette -->
                                             <Grid>
-                                                <Viewbox Stretch="Uniform" Height="84">
+                                                <Viewbox Stretch="Uniform" Height="100">
                                                     <Border Width="1920" Height="1080" Background="{DynamicResource BackgroundLevel0Brush}">
                                                         <Image Source="{Binding PreviewImage}" Stretch="Fill"
                                                                RenderOptions.BitmapScalingMode="LowQuality"/>
                                                     </Border>
                                                 </Viewbox>
+                                                <!-- Camera number badge -->
+                                                <Border HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                        Background="#80000000" Padding="5,2" Margin="2" CornerRadius="2" IsHitTestVisible="False">
+                                                    <TextBlock Text="{Binding InputIndex, StringFormat='{}{0}'}"
+                                                               Foreground="White" FontSize="9" FontWeight="Bold" FontFamily="Consolas"/>
+                                                </Border>
                                                 <!-- Bottom gradient vignette -->
                                                 <Border VerticalAlignment="Bottom" Height="24" IsHitTestVisible="False">
                                                     <Border.Background>
@@ -904,69 +950,10 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Recording Controls -->
-                <Border Grid.Row="0" Margin="4,4,4,2" Padding="0"
-                        Background="{DynamicResource BackgroundLevel2Brush}"
-                        BorderBrush="{DynamicResource BorderSubtleBrush}"
-                        BorderThickness="1" CornerRadius="6">
-                    <StackPanel>
-                        <Border Background="{DynamicResource PanelHeaderGradient}" CornerRadius="6,6,0,0" Padding="0">
-                            <Border BorderBrush="{DynamicResource AccentBlueBrush}" BorderThickness="3,0,0,0"
-                                    CornerRadius="6,0,0,0" Padding="10,8,10,8">
-                                <TextBlock Text="RECORDING" Style="{DynamicResource PanelHeaderStyle}" Margin="0"/>
-                            </Border>
-                        </Border>
-
-                        <!-- Recording Name Input -->
-                        <StackPanel Margin="10,8,10,10">
-                            <TextBlock Text="Recording Name" Foreground="{DynamicResource TextSecondaryBrush}"
-                                       FontSize="11" Margin="0,0,0,4"/>
-                            <TextBox Text="{Binding RecordingName, UpdateSourceTrigger=PropertyChanged}"
-                                     Background="{DynamicResource BackgroundLevel0Brush}"
-                                     Foreground="{DynamicResource TextPrimaryBrush}"
-                                     BorderBrush="{DynamicResource BorderSubtleBrush}"
-                                     Padding="8,6"/>
-
-                            <Grid Margin="0,12,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <Button Grid.Column="0" Style="{DynamicResource RecordButtonStyle}"
-                                        Command="{Binding ToggleRecordingCommand}"
-                                        HorizontalAlignment="Center" Width="64" Height="64"/>
-
-                                <Button Grid.Column="1" Style="{DynamicResource ToolbarButtonStyle}"
-                                        Command="{Binding StopRecordingCommand}"
-                                        HorizontalAlignment="Center" Width="48" Height="48"
-                                        IsEnabled="{Binding IsRecording}">
-                                    <Rectangle Width="20" Height="20" Fill="White"/>
-                                </Button>
-
-                                <Button Grid.Column="2" Style="{DynamicResource ToolbarButtonStyle}"
-                                        Command="{Binding TogglePauseCommand}"
-                                        HorizontalAlignment="Center" Width="48" Height="48"
-                                        IsEnabled="{Binding IsRecording}">
-                                    <TextBlock Text="⏸" FontSize="20" Foreground="White"/>
-                                </Button>
-                            </Grid>
-
-                            <TextBlock Text="{Binding RecordingStatusText}"
-                                       HorizontalAlignment="Center" Margin="0,12,0,0"
-                                       Foreground="{DynamicResource TextPrimaryBrush}"
-                                       FontSize="14"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
                 <!-- Quick Schedule -->
-                <Border Grid.Row="1" Margin="4,2,4,2" Padding="0"
+                <Border Grid.Row="0" Margin="4,4,4,2" Padding="0"
                         Background="{DynamicResource BackgroundLevel2Brush}"
                         BorderBrush="{DynamicResource BorderSubtleBrush}"
                         BorderThickness="1" CornerRadius="6">
@@ -1049,148 +1036,8 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Inputs Selection -->
-                <Border Grid.Row="2" Margin="4,2,4,2" Padding="0"
-                        Background="{DynamicResource BackgroundLevel2Brush}"
-                        BorderBrush="{DynamicResource BorderSubtleBrush}"
-                        BorderThickness="1" CornerRadius="6">
-                    <StackPanel>
-                        <Border Background="{DynamicResource PanelHeaderGradient}" CornerRadius="6,6,0,0" Padding="0">
-                            <Border BorderBrush="{DynamicResource AccentGreenBrush}" BorderThickness="3,0,0,0"
-                                    CornerRadius="6,0,0,0" Padding="10,8,10,8">
-                                <TextBlock Text="INPUTS" Style="{DynamicResource PanelHeaderStyle}" Margin="0"/>
-                            </Border>
-                        </Border>
-                        <StackPanel Margin="10,4,10,10">
-                        <TextBlock Text="Click to preview, check to record"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="10" Margin="0,4,0,0"/>
-                        <ListBox ItemsSource="{Binding InputConfiguration.Inputs}"
-                                 SelectedItem="{Binding InputConfiguration.SelectedInput}"
-                                 Margin="0,8,0,0"
-                                 Background="Transparent"
-                                 BorderThickness="0">
-                            <ListBox.ItemContainerStyle>
-                                <Style TargetType="ListBoxItem">
-                                    <Setter Property="Padding" Value="4"/>
-                                    <Setter Property="Margin" Value="0,1"/>
-                                    <Setter Property="Background" Value="Transparent"/>
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="ListBoxItem">
-                                                <Border x:Name="Border"
-                                                        Background="{TemplateBinding Background}"
-                                                        BorderBrush="{DynamicResource BorderSubtleBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="4"
-                                                        Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter/>
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsSelected" Value="True">
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource AccentBlueBrush}"/>
-                                                        <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource AccentBlueBrush}"/>
-                                                    </Trigger>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource BackgroundLevel2Brush}"/>
-                                                    </Trigger>
-                                                    <MultiTrigger>
-                                                        <MultiTrigger.Conditions>
-                                                            <Condition Property="IsSelected" Value="True"/>
-                                                            <Condition Property="IsMouseOver" Value="True"/>
-                                                        </MultiTrigger.Conditions>
-                                                        <Setter TargetName="Border" Property="Background" Value="{DynamicResource AccentBlueBrush}"/>
-                                                    </MultiTrigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsEnabled}"
-                                                  VerticalAlignment="Center" Margin="0,0,8,0"
-                                                  ToolTip="Enable for recording"/>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding ShortName}"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                                           FontWeight="SemiBold" FontSize="12"/>
-                                                <!-- NDI type badge -->
-                                                <Border Margin="6,0,0,0" Padding="4,1" CornerRadius="2"
-                                                        Background="{DynamicResource AccentBlueBrush}" VerticalAlignment="Center">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding Connector}" Value="NDI">
-                                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                    <TextBlock Text="NDI" Foreground="White" FontSize="9" FontWeight="Bold"/>
-                                                </Border>
-                                                <!-- SRT type badge -->
-                                                <Border Margin="6,0,0,0" Padding="4,1" CornerRadius="2"
-                                                        Background="{DynamicResource AccentOrangeBrush}" VerticalAlignment="Center">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding Connector}" Value="SRT">
-                                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                    <TextBlock Text="SRT" Foreground="White" FontSize="9" FontWeight="Bold"/>
-                                                </Border>
-                                            </StackPanel>
-                                            <TextBlock Text="{Binding DisplayName}"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="10"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <!-- Schedule clock icon -->
-                                            <TextBlock Text="&#xE823;" FontFamily="Segoe MDL2 Assets"
-                                                       FontSize="12" Foreground="{DynamicResource AccentYellowBrush}"
-                                                       VerticalAlignment="Center" Margin="4,0,0,0"
-                                                       ToolTip="Scheduled"
-                                                       Visibility="{Binding HasSchedule, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                                            <!-- Signal dot -->
-                                            <Ellipse Width="8" Height="8"
-                                                     VerticalAlignment="Center" Margin="4,0,0,0"
-                                                     ToolTip="{Binding StatusText}">
-                                                <Ellipse.Style>
-                                                    <Style TargetType="Ellipse">
-                                                        <Setter Property="Fill" Value="#666666"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HasSignal}" Value="True">
-                                                                <Setter Property="Fill" Value="#44FF44"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Ellipse.Style>
-                                            </Ellipse>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
                 <!-- Golf Mode Controls -->
-                <Border Grid.Row="3" Margin="4,2,4,2" Padding="0"
+                <Border Grid.Row="1" Margin="4,2,4,2" Padding="0"
                         Background="{DynamicResource BackgroundLevel2Brush}"
                         BorderBrush="{DynamicResource BorderSubtleBrush}"
                         BorderThickness="1" CornerRadius="6"
@@ -1444,7 +1291,7 @@
                 </Border>
 
                 <!-- Timecode Display -->
-                <Border Grid.Row="4" Margin="4,2,4,2" Padding="0"
+                <Border Grid.Row="2" Margin="4,2,4,2" Padding="0"
                         Background="{DynamicResource BackgroundLevel2Brush}"
                         BorderBrush="{DynamicResource BorderSubtleBrush}"
                         BorderThickness="1" CornerRadius="6">
@@ -1471,7 +1318,7 @@
                 </Border>
 
                 <!-- Audio Meters -->
-                <Border Grid.Row="5" Margin="4,2,4,2" Padding="0"
+                <Border Grid.Row="3" Margin="4,2,4,2" Padding="0"
                         Background="{DynamicResource BackgroundLevel2Brush}"
                         BorderBrush="{DynamicResource BorderSubtleBrush}"
                         BorderThickness="1" CornerRadius="6">
@@ -1493,7 +1340,7 @@
                 </Border>
 
                 <!-- Drive Status -->
-                <Border Grid.Row="6" Margin="4,2,4,4" Padding="0"
+                <Border Grid.Row="4" Margin="4,2,4,4" Padding="0"
                         Background="{DynamicResource BackgroundLevel2Brush}"
                         BorderBrush="{DynamicResource BorderSubtleBrush}"
                         BorderThickness="1" CornerRadius="6">

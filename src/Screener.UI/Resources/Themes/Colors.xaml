@@ -2,10 +2,10 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Background Hierarchy (Darkest to Lightest) -->
-    <Color x:Key="BackgroundLevel0">#FF1A1A1A</Color>
-    <Color x:Key="BackgroundLevel1">#FF242424</Color>
-    <Color x:Key="BackgroundLevel2">#FF2D2D2D</Color>
-    <Color x:Key="BackgroundLevel3">#FF383838</Color>
+    <Color x:Key="BackgroundLevel0">#FF0D0D0D</Color>
+    <Color x:Key="BackgroundLevel1">#FF181818</Color>
+    <Color x:Key="BackgroundLevel2">#FF222222</Color>
+    <Color x:Key="BackgroundLevel3">#FF2D2D2D</Color>
 
     <!-- Text Colors -->
     <Color x:Key="TextPrimary">#FFFFFFFF</Color>
@@ -100,6 +100,23 @@
     <SolidColorBrush x:Key="NoSignalBrush" Color="#FF555555"/>
     <DropShadowEffect x:Key="MonitorShadow" BlurRadius="12" ShadowDepth="3" Color="Black" Opacity="0.5" Direction="270"/>
 
+    <!-- NO SIGNAL crosshatch pattern -->
+    <DrawingBrush x:Key="NoSignalCrosshatchBrush" TileMode="Tile" Viewport="0,0,16,16" ViewportUnits="Absolute">
+        <DrawingBrush.Drawing>
+            <GeometryDrawing>
+                <GeometryDrawing.Pen>
+                    <Pen Brush="#18FFFFFF" Thickness="1"/>
+                </GeometryDrawing.Pen>
+                <GeometryDrawing.Geometry>
+                    <GeometryGroup>
+                        <LineGeometry StartPoint="0,0" EndPoint="16,16"/>
+                        <LineGeometry StartPoint="16,0" EndPoint="0,16"/>
+                    </GeometryGroup>
+                </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+
     <!-- Gradient Brushes -->
     <LinearGradientBrush x:Key="AudioMeterGradient" StartPoint="0,1" EndPoint="0,0">
         <GradientStop Color="{StaticResource MeterGreen}" Offset="0"/>
@@ -110,23 +127,23 @@
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="PanelHeaderGradient" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FF2A2A2A" Offset="0"/>
-        <GradientStop Color="#FF1E1E1E" Offset="1"/>
+        <GradientStop Color="#FF1E1E1E" Offset="0"/>
+        <GradientStop Color="#FF151515" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="ToolbarGradient" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FF292929" Offset="0"/>
-        <GradientStop Color="#FF222222" Offset="1"/>
+        <GradientStop Color="#FF1A1A1A" Offset="0"/>
+        <GradientStop Color="#FF151515" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="StatusBarGradient" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FF222222" Offset="0"/>
-        <GradientStop Color="#FF1C1C1C" Offset="1"/>
+        <GradientStop Color="#FF151515" Offset="0"/>
+        <GradientStop Color="#FF111111" Offset="1"/>
     </LinearGradientBrush>
 
     <LinearGradientBrush x:Key="CardBorderGradient" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FF404040" Offset="0"/>
-        <GradientStop Color="#FF333333" Offset="1"/>
+        <GradientStop Color="#FF333333" Offset="0"/>
+        <GradientStop Color="#FF282828" Offset="1"/>
     </LinearGradientBrush>
 
     <!-- Drop Shadow Effects -->
