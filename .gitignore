@@ -55,3 +55,10 @@ _Chutzpah*
 # Local settings
 appsettings.Development.json
 appsettings.Local.json
+
+# Node.js (web panel)
+node_modules/
+web/panel.db
+web/panel.db-wal
+web/panel.db-shm
+web/.env

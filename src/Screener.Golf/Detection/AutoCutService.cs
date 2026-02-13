@@ -12,6 +12,7 @@ public class AutoCutService
     private readonly ILogger<AutoCutService> _logger;
     private readonly SwingDetector _swingDetector;
     private readonly ResetDetector _resetDetector;
+    private readonly AudioSwingDetector _audioSwingDetector;
     private AutoCutConfiguration _config;
 
     private AutoCutState _state = AutoCutState.Disabled;
@@ -19,10 +20,15 @@ public class AutoCutService
     private long _source1FrameCount;
     private long _source2FrameCount;
 
+    // Fusion spike timestamps
+    private DateTimeOffset? _audioSpikeDetectedAt;
+    private DateTimeOffset? _videoSpikeDetectedAt;
+
     public AutoCutState State => _state;
     public AutoCutConfiguration Configuration => _config;
     public SwingDetector SwingDetector => _swingDetector;
     public ResetDetector ResetDetector => _resetDetector;
+    public AudioSwingDetector AudioSwingDetector => _audioSwingDetector;
 
     /// <summary>
     /// Fired when the auto-cut system determines a source switch should happen.
@@ -39,6 +45,7 @@ public class AutoCutService
         _logger = logger;
         _swingDetector = new SwingDetector(logger, _config);
         _resetDetector = new ResetDetector(logger, _config);
+        _audioSwingDetector = new AudioSwingDetector(logger, _config);
     }
 
     /// <summary>
@@ -54,6 +61,9 @@ public class AutoCutService
 
         _swingDetector.Reset();
         _resetDetector.Reset();
+        _audioSwingDetector.Reset();
+        _audioSpikeDetectedAt = null;
+        _videoSpikeDetectedAt = null;
         TransitionTo(AutoCutState.WaitingForSwing);
         _logger.LogInformation("Auto-cut enabled");
     }
@@ -100,9 +110,19 @@ public class AutoCutService
             bool swingDetected = _swingDetector.ProcessFrame(uyvyData.Span, srcWidth, srcHeight);
             if (swingDetected)
             {
+                _videoSpikeDetectedAt = DateTimeOffset.UtcNow;
+
+                // Check if audio spike was recent (fusion)
+                string reason = "swing_detected";
+                if (_audioSpikeDetectedAt.HasValue)
+                {
+                    var gap = (DateTimeOffset.UtcNow - _audioSpikeDetectedAt.Value).TotalMilliseconds;
+                    if (gap <= _config.AudioVideoFusionWindowMs)
+                        reason = "video_audio_fusion";
+                }
+
                 TransitionTo(AutoCutState.SwingDetected);
-                // Immediately cut to Source 2
-                CutTriggered?.Invoke(this, new AutoCutEventArgs(1, "swing_detected"));
+                CutTriggered?.Invoke(this, new AutoCutEventArgs(1, reason));
                 TransitionTo(AutoCutState.FollowingShot);
             }
         }
@@ -166,6 +186,45 @@ public class AutoCutService
                 TransitionTo(AutoCutState.Cooldown);
             }
         }
+    }
+
+    /// <summary>
+    /// Process audio samples from the golfer camera input.
+    /// Detects club impact sounds and optionally fuses with video spike detection.
+    /// </summary>
+    public void ProcessAudioFrame(ReadOnlyMemory<byte> sampleData, int sampleRate, int channels, int bitsPerSample)
+    {
+        if (_state != AutoCutState.WaitingForSwing)
+            return;
+
+        bool spike = _audioSwingDetector.ProcessAudio(sampleData.Span, sampleRate, channels, bitsPerSample);
+        if (!spike)
+            return;
+
+        if (_config.AudioOnlyMode)
+        {
+            // Audio alone triggers the cut
+            TransitionTo(AutoCutState.SwingDetected);
+            CutTriggered?.Invoke(this, new AutoCutEventArgs(1, "audio_swing"));
+            TransitionTo(AutoCutState.FollowingShot);
+            return;
+        }
+
+        // Check if video spike was recent (fusion)
+        if (_videoSpikeDetectedAt.HasValue)
+        {
+            var gap = (DateTimeOffset.UtcNow - _videoSpikeDetectedAt.Value).TotalMilliseconds;
+            if (gap <= _config.AudioVideoFusionWindowMs)
+            {
+                TransitionTo(AutoCutState.SwingDetected);
+                CutTriggered?.Invoke(this, new AutoCutEventArgs(1, "audio_video_fusion"));
+                TransitionTo(AutoCutState.FollowingShot);
+                return;
+            }
+        }
+
+        // Record audio spike timestamp and wait for video confirmation
+        _audioSpikeDetectedAt = DateTimeOffset.UtcNow;
     }
 
     /// <summary>

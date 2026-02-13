@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Screener.Abstractions\Screener.Abstractions.csproj" />
     <ProjectReference Include="..\Screener.Core\Screener.Core.csproj" />
+    <ProjectReference Include="..\Screener.Golf\Screener.Golf.csproj" />
   </ItemGroup>
 
   <ItemGroup>

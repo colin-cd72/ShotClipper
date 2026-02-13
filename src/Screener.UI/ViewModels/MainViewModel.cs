@@ -7,16 +7,21 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Screener.Abstractions.Capture;
+using Screener.Abstractions.Clipping;
 using Screener.Abstractions.Encoding;
 using Screener.Abstractions.Recording;
 using Screener.Abstractions.Scheduling;
 using Screener.Abstractions.Output;
 using Screener.Abstractions.Streaming;
+using Screener.Abstractions.Upload;
+using Screener.Core.Persistence;
 using Screener.Abstractions.Timecode;
 using Screener.Core.Output;
 using Screener.Core.Settings;
 using Screener.Golf.Detection;
+using Screener.Golf.Export;
 using Screener.Golf.Models;
+using Screener.Golf.Persistence;
 using Screener.Golf.Switching;
 using Screener.Preview;
 using Screener.Scheduling;
@@ -30,6 +35,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IDeviceManager _deviceManager;
     private readonly ISettingsService _settingsService;
     private readonly IRecordingService _recordingService;
+    private readonly IClippingService _clippingService;
     private readonly ISchedulingService _schedulingService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly AudioPreviewService _audioPreviewService;
@@ -42,11 +48,19 @@ public partial class MainViewModel : ObservableObject
     private readonly Dictionary<string, InputPreviewRenderer> _previewRenderers = new();
     private ICaptureDevice? _audioDevice;
 
+    // Upload service
+    private readonly IUploadService _uploadService;
+
+    // Fullscreen preview
+    private FullscreenPreviewWindow? _fullscreenWindow;
+
     // Golf mode services
     private readonly SwitcherService _switcherService;
     private readonly AutoCutService _autoCutService;
     private readonly GolfSession _golfSession;
     private readonly SequenceRecorder _sequenceRecorder;
+    private readonly ClipExportService _clipExportService;
+    private readonly GolferRepository _golferRepository;
     private System.Windows.Threading.DispatcherTimer? _autoCutTickTimer;
 
     // Child ViewModels
@@ -189,6 +203,37 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private double _autoCutSensitivity = 4.0;
 
+    // Audio Swing Detection
+    [ObservableProperty]
+    private double _audioLevel = -60.0;
+
+    private ICaptureDevice? _golferAudioDevice;
+
+    // Auto-Upload
+    [ObservableProperty]
+    private bool _autoUploadEnabled;
+
+    [ObservableProperty]
+    private string? _selectedUploadProviderId;
+
+    public ObservableCollection<UploadProviderOption> AvailableUploadProviders { get; } = new();
+
+    // Practice swing counter
+    [ObservableProperty]
+    private int _practiceSwingCount;
+
+    // Cut history
+    public ObservableCollection<CutHistoryItem> CutHistory { get; } = new();
+
+    // Golfer Selection
+    public ObservableCollection<GolferProfile> AvailableGolfers { get; } = new();
+
+    [ObservableProperty]
+    private GolferProfile? _selectedGolfer;
+
+    // Export Queue
+    public ObservableCollection<ExportQueueItem> ExportQueue { get; } = new();
+
     // Per-input schedule state
     private readonly Dictionary<string, InputScheduleState> _inputScheduleStates = new();
 
@@ -240,6 +285,7 @@ public partial class MainViewModel : ObservableObject
         IDeviceManager deviceManager,
         ISettingsService settingsService,
         IRecordingService recordingService,
+        IClippingService clippingService,
         ISchedulingService schedulingService,
         ILogger<MainViewModel> logger,
         RecordingControlsViewModel recordingControls,
@@ -255,12 +301,16 @@ public partial class MainViewModel : ObservableObject
         SwitcherService switcherService,
         AutoCutService autoCutService,
         GolfSession golfSession,
-        SequenceRecorder sequenceRecorder)
+        SequenceRecorder sequenceRecorder,
+        ClipExportService clipExportService,
+        GolferRepository golferRepository,
+        IUploadService uploadService)
     {
         _serviceProvider = serviceProvider;
         _deviceManager = deviceManager;
         _settingsService = settingsService;
         _recordingService = recordingService;
+        _clippingService = clippingService;
         _schedulingService = schedulingService;
         _logger = logger;
         _audioPreviewService = audioPreviewService;
@@ -270,6 +320,9 @@ public partial class MainViewModel : ObservableObject
         _autoCutService = autoCutService;
         _golfSession = golfSession;
         _sequenceRecorder = sequenceRecorder;
+        _clipExportService = clipExportService;
+        _golferRepository = golferRepository;
+        _uploadService = uploadService;
 
         // Check NDI availability
         var ndiOutput = _outputManager.GetOutput("ndi-output");
@@ -285,6 +338,9 @@ public partial class MainViewModel : ObservableObject
         // Subscribe to recording service events
         _recordingService.StateChanged += OnRecordingStateChanged;
         _recordingService.Progress += OnRecordingProgress;
+
+        // Subscribe to clipping service events
+        _clippingService.MarkerAdded += OnClipMarkerAdded;
 
         // Subscribe to scheduling service events
         _schedulingService.ScheduleStarting += OnScheduleStarting;
@@ -314,6 +370,15 @@ public partial class MainViewModel : ObservableObject
         _sequenceRecorder.SequenceStarted += (_, seq) =>
             _golfSession.IncrementSwingCount();
         _sequenceRecorder.SequenceCompleted += OnSequenceCompleted;
+
+        // Wire clip export pipeline
+        _clipExportService.WireUp(_sequenceRecorder);
+        _clipExportService.ExportProgressChanged += OnExportProgressChanged;
+        _clipExportService.ExportCompleted += OnExportCompleted;
+
+        // Load golfer list and auto-upload settings
+        _ = LoadGolfersAsync();
+        _ = LoadAutoUploadSettingsAsync();
 
         // Initialize available drives
         RefreshDrives();
@@ -434,6 +499,17 @@ public partial class MainViewModel : ObservableObject
         // Update output selection on all renderers
         foreach (var kvp in _previewRenderers)
             kvp.Value.SetOutputManager(_outputManager, kvp.Key == input.DeviceId);
+
+        // Rebind fullscreen preview to new selected input
+        if (_fullscreenWindow != null)
+        {
+            _fullscreenWindow.SetBinding(
+                FullscreenPreviewWindow.PreviewImageProperty,
+                new System.Windows.Data.Binding(nameof(InputViewModel.PreviewImage))
+                {
+                    Source = input
+                });
+        }
 
         // Refresh schedule bindings for newly selected input
         NotifySchedulePropertiesChanged();
@@ -633,6 +709,23 @@ public partial class MainViewModel : ObservableObject
                 _ => "Ready"
             };
 
+            // Set active recording for clipping when recording starts
+            if (e.NewState == RecordingState.Recording && e.Session != null)
+            {
+                var filePath = e.Session.InputSessions.Count > 0
+                    ? e.Session.InputSessions[0].FilePath
+                    : e.Session.FilePath;
+                if (!string.IsNullOrEmpty(filePath))
+                    _clippingService.SetActiveRecording(filePath);
+            }
+
+            // Clear markers when recording stops
+            if (e.NewState == RecordingState.Stopped)
+            {
+                _clippingService.ClearMarkers();
+                ClipBin.LiveMarkers.Clear();
+            }
+
             // Add completed recording(s) to clip bin
             if (e.NewState == RecordingState.Stopped && e.Session != null)
             {
@@ -697,6 +790,21 @@ public partial class MainViewModel : ObservableObject
             RecordingDuration = e.Duration;
             DroppedFrames = e.DroppedFrames;
             DroppedFramesColor = e.DroppedFrames > 0 ? Brushes.Red : Brushes.Gray;
+        });
+    }
+
+    private void OnClipMarkerAdded(object? sender, ClipMarkerEventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var marker = e.Marker;
+            ClipBin.LiveMarkers.Add(new MarkerViewModel
+            {
+                Name = marker.Name ?? marker.Type.ToString(),
+                Position = marker.Position,
+                Timecode = marker.Timecode.ToString(),
+                MarkerType = marker.Type.ToString()
+            });
         });
     }
 
@@ -931,33 +1039,71 @@ public partial class MainViewModel : ObservableObject
     private void AddMarker()
     {
         if (!IsRecording) return;
-        // TODO: Add marker via ClippingService
+
+        var position = RecordingDuration;
+        var timecode = Timecode.CurrentTimecode;
+        var name = $"Marker {ClipBin.LiveMarkers.Count + 1}";
+
+        _clippingService.AddChapterMarker(position, timecode, name);
+        _logger.LogInformation("Chapter marker added at {Position}", position);
     }
 
     [RelayCommand]
     private void SetInPoint()
     {
         if (!IsRecording) return;
-        // TODO: Set in point via ClippingService
+
+        var position = RecordingDuration;
+        var timecode = Timecode.CurrentTimecode;
+
+        _clippingService.SetInPoint(position, timecode);
+        _logger.LogInformation("In point set at {Position}", position);
     }
 
     [RelayCommand]
     private void SetOutPoint()
     {
         if (!IsRecording) return;
-        // TODO: Set out point via ClippingService
+
+        var position = RecordingDuration;
+        var timecode = Timecode.CurrentTimecode;
+
+        _clippingService.SetOutPoint(position, timecode);
+        _logger.LogInformation("Out point set at {Position}", position);
     }
 
     [RelayCommand]
     private void ToggleFullscreen()
     {
-        // TODO: Toggle fullscreen preview
+        if (_fullscreenWindow != null)
+        {
+            _fullscreenWindow.Close();
+            return;
+        }
+
+        _fullscreenWindow = new FullscreenPreviewWindow();
+
+        // Bind PreviewImage to the currently selected input's preview
+        var selectedInput = InputConfiguration.SelectedInput;
+        if (selectedInput != null)
+        {
+            _fullscreenWindow.SetBinding(
+                FullscreenPreviewWindow.PreviewImageProperty,
+                new System.Windows.Data.Binding(nameof(InputViewModel.PreviewImage))
+                {
+                    Source = selectedInput
+                });
+        }
+
+        _fullscreenWindow.Closed += (_, _) => _fullscreenWindow = null;
+        _fullscreenWindow.Show();
     }
 
     [RelayCommand]
     private void ExitFullscreen()
     {
-        // TODO: Exit fullscreen preview
+        _fullscreenWindow?.Close();
+        _fullscreenWindow = null;
     }
 
     [RelayCommand]
@@ -1332,6 +1478,19 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void SetSensitivityPreset(string preset)
+    {
+        var config = preset switch
+        {
+            "High" => AutoCutConfiguration.HighSensitivity,
+            "Low" => AutoCutConfiguration.LowSensitivity,
+            _ => AutoCutConfiguration.Default
+        };
+        _autoCutService.UpdateConfiguration(config);
+        AutoCutSensitivity = config.SwingSpikeMultiplier;
+    }
+
+    [RelayCommand]
     private void CalibrateIdle()
     {
         var simInput = InputConfiguration.GetInputByGolfRole(InputRole.SimulatorOutput);
@@ -1354,14 +1513,39 @@ public partial class MainViewModel : ObservableObject
     {
         if (IsSessionActive) return;
 
-        var session = _golfSession.StartSession();
+        var session = _golfSession.StartSession(SelectedGolfer);
         _sequenceRecorder.StartSession(session.Id);
+
+        // Set recording paths from current recording if active
+        if (IsRecording && _recordingService.CurrentSession != null)
+        {
+            var golferInput = InputConfiguration.GetInputByGolfRole(InputRole.GolferCamera);
+            var simInput = InputConfiguration.GetInputByGolfRole(InputRole.SimulatorOutput);
+            var inputSessions = _recordingService.CurrentSession.InputSessions;
+
+            var src1Path = golferInput != null
+                ? inputSessions.FirstOrDefault(s => s.Input.DeviceId == golferInput.DeviceId)?.FilePath
+                : null;
+            var src2Path = simInput != null
+                ? inputSessions.FirstOrDefault(s => s.Input.DeviceId == simInput.DeviceId)?.FilePath
+                : null;
+
+            // Fallback to single-session path if no multi-input sessions
+            if (src2Path == null && inputSessions.Count == 0)
+                src2Path = _recordingService.CurrentSession.FilePath;
+
+            _golfSession.SetRecordingPaths(src1Path, src2Path);
+        }
 
         IsSessionActive = true;
         SessionGolferName = session.GolferDisplayName;
         SwingCount = 0;
+        PracticeSwingCount = 0;
+        CutHistory.Clear();
+        ExportQueue.Clear();
 
-        _logger.LogInformation("Golf session started");
+        _logger.LogInformation("Golf session started (Golfer: {Golfer})",
+            SelectedGolfer?.EffectiveDisplayName ?? "None");
     }
 
     [RelayCommand]
@@ -1422,6 +1606,13 @@ public partial class MainViewModel : ObservableObject
                 Application.Current?.Dispatcher.BeginInvoke(() =>
                     MotionLevel = _autoCutService.SwingDetector.LastSad);
             });
+
+            // Wire audio from golfer camera for audio swing detection
+            if (golferInput.PreviewRenderer.Device != null)
+            {
+                _golferAudioDevice = golferInput.PreviewRenderer.Device;
+                _golferAudioDevice.AudioSamplesReceived += OnGolferAudioSamplesReceived;
+            }
         }
 
         if (simInput?.PreviewRenderer != null)
@@ -1443,10 +1634,23 @@ public partial class MainViewModel : ObservableObject
 
     private void ClearGolfFrameCallbacks()
     {
+        if (_golferAudioDevice != null)
+        {
+            _golferAudioDevice.AudioSamplesReceived -= OnGolferAudioSamplesReceived;
+            _golferAudioDevice = null;
+        }
+
         foreach (var renderer in _previewRenderers.Values)
         {
             renderer.SetFrameAnalysisCallback(null);
         }
+    }
+
+    private void OnGolferAudioSamplesReceived(object? sender, AudioSamplesEventArgs e)
+    {
+        _autoCutService.ProcessAudioFrame(e.SampleData, e.SampleRate, e.Channels, e.BitsPerSample);
+        Application.Current?.Dispatcher.BeginInvoke(() =>
+            AudioLevel = _autoCutService.AudioSwingDetector.LastRmsDb);
     }
 
     private void OnProgramSourceChanged(object? sender, ProgramSourceChangedEventArgs e)
@@ -1454,6 +1658,32 @@ public partial class MainViewModel : ObservableObject
         Application.Current.Dispatcher.Invoke(() =>
         {
             ActiveSourceIndex = e.NewSourceIndex;
+
+            // Update IsProgramSource on all inputs
+            foreach (var input in EnabledInputs)
+            {
+                input.IsProgramSource =
+                    (input.GolfRole == InputRole.GolferCamera && e.NewSourceIndex == 0) ||
+                    (input.GolfRole == InputRole.SimulatorOutput && e.NewSourceIndex == 1);
+            }
+
+            // Track practice swings
+            if (e.Reason == "practice_swing")
+            {
+                PracticeSwingCount++;
+            }
+
+            // Add cut history entry
+            string direction = e.NewSourceIndex == 1 ? "-> SIM" : "-> GOLFER";
+            CutHistory.Insert(0, new CutHistoryItem
+            {
+                Timestamp = e.Timestamp,
+                TimeDisplay = e.Timestamp.ToLocalTime().ToString("HH:mm:ss"),
+                Reason = e.Reason,
+                Direction = direction
+            });
+            while (CutHistory.Count > 10)
+                CutHistory.RemoveAt(CutHistory.Count - 1);
 
             // Switch the selected input to match the active program source
             var targetInput = InputConfiguration.GetGolfSource(e.NewSourceIndex);
@@ -1507,7 +1737,131 @@ public partial class MainViewModel : ObservableObject
         {
             _logger.LogInformation("Swing #{Num} ready for export (Duration: {Duration:F1}s)",
                 sequence.SequenceNumber, sequence.Duration?.TotalSeconds ?? 0);
+
+            // Add to export queue
+            ExportQueue.Add(new ExportQueueItem
+            {
+                SwingNumber = sequence.SequenceNumber,
+                Status = "Pending",
+                Duration = sequence.Duration
+            });
         });
+    }
+
+    private void OnExportProgressChanged(object? sender, ExportProgressEventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var item = ExportQueue.FirstOrDefault(q => q.SwingNumber == e.SwingNumber);
+            if (item != null)
+                item.Status = e.Status;
+        });
+    }
+
+    private void OnExportCompleted(object? sender, ExportCompletedEventArgs e)
+    {
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            var item = ExportQueue.FirstOrDefault(q => q.SwingNumber == e.SwingNumber);
+            if (item != null)
+            {
+                item.Status = e.Success ? "Complete" : "Failed";
+                item.OutputPath = e.OutputPath;
+            }
+
+            // Add completed clip to clip bin
+            if (e.Success && e.OutputPath != null && System.IO.File.Exists(e.OutputPath))
+            {
+                var fileInfo = new System.IO.FileInfo(e.OutputPath);
+                ClipBin.AddClip(new ClipViewModel
+                {
+                    Name = System.IO.Path.GetFileNameWithoutExtension(e.OutputPath),
+                    FilePath = e.OutputPath,
+                    Duration = e.Duration ?? TimeSpan.Zero,
+                    FileSizeBytes = fileInfo.Length,
+                    CreatedAt = DateTime.Now
+                });
+            }
+
+            // Auto-upload completed export
+            if (e.Success && AutoUploadEnabled && SelectedUploadProviderId != null && e.OutputPath != null)
+            {
+                var remotePath = $"golf/{System.IO.Path.GetFileName(e.OutputPath)}";
+                _ = _uploadService.EnqueueAsync(new UploadRequest(
+                    e.OutputPath,
+                    SelectedUploadProviderId,
+                    remotePath));
+                _logger.LogInformation("Auto-upload enqueued for {Path}", e.OutputPath);
+            }
+        });
+    }
+
+    private async Task LoadGolfersAsync()
+    {
+        try
+        {
+            var golfers = await _golferRepository.GetAllAsync();
+            AvailableGolfers.Clear();
+            foreach (var golfer in golfers)
+                AvailableGolfers.Add(golfer);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load golfers");
+        }
+    }
+
+    [RelayCommand]
+    private void OpenGolferManagement()
+    {
+        var window = _serviceProvider.GetRequiredService<GolferManagementWindow>();
+        window.Owner = Application.Current.MainWindow;
+        window.ShowDialog();
+
+        // Refresh golfer list after dialog closes
+        _ = LoadGolfersAsync();
+    }
+
+    [RelayCommand]
+    private void OpenOverlaySettings()
+    {
+        var window = _serviceProvider.GetRequiredService<OverlaySettingsWindow>();
+        window.Owner = Application.Current.MainWindow;
+        window.ShowDialog();
+    }
+
+    private async Task LoadAutoUploadSettingsAsync()
+    {
+        try
+        {
+            AutoUploadEnabled = await _settingsService.GetAsync(SettingsKeys.GolfAutoUpload, false);
+            SelectedUploadProviderId = await _settingsService.GetAsync<string?>(SettingsKeys.GolfAutoUploadProvider, null);
+
+            AvailableUploadProviders.Clear();
+            foreach (var provider in _uploadService.GetProviders().Where(p => p.IsConfigured))
+            {
+                AvailableUploadProviders.Add(new UploadProviderOption
+                {
+                    ProviderId = provider.ProviderId,
+                    DisplayName = provider.DisplayName
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load auto-upload settings");
+        }
+    }
+
+    partial void OnAutoUploadEnabledChanged(bool value)
+    {
+        _ = _settingsService.SetAsync(SettingsKeys.GolfAutoUpload, value);
+    }
+
+    partial void OnSelectedUploadProviderIdChanged(string? value)
+    {
+        if (value != null)
+            _ = _settingsService.SetAsync(SettingsKeys.GolfAutoUploadProvider, value);
     }
 
     [RelayCommand]
@@ -1555,4 +1909,18 @@ public class ViewerInfo
         { TotalMinutes: >= 1 } ts => $"{ts.Minutes}m {ts.Seconds}s",
         var ts => $"{ts.Seconds}s"
     };
+}
+
+public class CutHistoryItem
+{
+    public DateTimeOffset Timestamp { get; init; }
+    public string TimeDisplay { get; init; } = string.Empty;
+    public string Reason { get; init; } = string.Empty;
+    public string Direction { get; init; } = string.Empty;
+}
+
+public class UploadProviderOption
+{
+    public string ProviderId { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
 }

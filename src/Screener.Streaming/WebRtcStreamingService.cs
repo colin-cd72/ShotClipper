@@ -8,7 +8,11 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using QRCoder;
+using Screener.Abstractions.Scheduling;
 using Screener.Abstractions.Streaming;
+using Screener.Core.Persistence;
+using Screener.Golf.Models;
+using Screener.Golf.Persistence;
 
 namespace Screener.Streaming;
 
@@ -20,11 +24,20 @@ public sealed class WebRtcStreamingService : IStreamingService
     private readonly ILogger<WebRtcStreamingService> _logger;
     private readonly ConcurrentDictionary<string, ViewerSession> _viewers = new();
 
+    // Optional services for REST API (injected via SetApiServices)
+    private GolferRepository? _golferRepository;
+    private OverlayRepository? _overlayRepository;
+    private ISchedulingService? _schedulingService;
+    private SettingsRepository? _settingsRepository;
+    private Func<ApiStatusInfo>? _statusProvider;
+    private string? _exportDirectory;
+
     private HttpListener? _httpListener;
     private StreamingConfiguration? _config;
     private StreamingState _state = StreamingState.Stopped;
     private CancellationTokenSource? _cts;
     private Task? _listenerTask;
+    private DateTimeOffset _startedAt;
 
     public StreamingState State => _state;
     public IReadOnlyList<StreamingClient> ConnectedClients => _viewers.Values.Select(v => v.ToClient()).ToList();
@@ -36,6 +49,25 @@ public sealed class WebRtcStreamingService : IStreamingService
     public WebRtcStreamingService(ILogger<WebRtcStreamingService> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Configure optional services used by the REST API endpoints.
+    /// </summary>
+    public void SetApiServices(
+        GolferRepository? golferRepository = null,
+        OverlayRepository? overlayRepository = null,
+        ISchedulingService? schedulingService = null,
+        SettingsRepository? settingsRepository = null,
+        Func<ApiStatusInfo>? statusProvider = null,
+        string? exportDirectory = null)
+    {
+        _golferRepository = golferRepository;
+        _overlayRepository = overlayRepository;
+        _schedulingService = schedulingService;
+        _settingsRepository = settingsRepository;
+        _statusProvider = statusProvider;
+        _exportDirectory = exportDirectory;
     }
 
     public async Task StartAsync(StreamingConfiguration config, CancellationToken ct = default)
@@ -85,6 +117,7 @@ public sealed class WebRtcStreamingService : IStreamingService
             _listenerTask = AcceptConnectionsAsync(_cts.Token);
 
             _state = StreamingState.Running;
+            _startedAt = DateTimeOffset.UtcNow;
 
             _logger.LogInformation("WebRTC streaming started at {Uri}", SignalingUri);
         }
@@ -333,7 +366,11 @@ public sealed class WebRtcStreamingService : IStreamingService
 
         try
         {
-            if (path == "/stream" || path == "/")
+            if (path.StartsWith("/api/"))
+            {
+                await HandleApiRequestAsync(context, path, ct);
+            }
+            else if (path == "/stream" || path == "/")
             {
                 // Serve viewer HTML page
                 await ServeViewerPageAsync(context);
@@ -379,6 +416,398 @@ public sealed class WebRtcStreamingService : IStreamingService
         {
             _logger.LogWarning(ex, "Error handling request");
             try { context.Response.Close(); } catch { }
+        }
+    }
+
+    // ========== REST API ==========
+
+    private async Task HandleApiRequestAsync(HttpListenerContext context, string path, CancellationToken ct)
+    {
+        var method = context.Request.HttpMethod;
+
+        // Validate API key
+        if (!ValidateApiKey(context))
+        {
+            await WriteJsonResponse(context, 401, new { error = "Invalid or missing API key" });
+            return;
+        }
+
+        // Add CORS headers
+        context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+        context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
+
+        if (method == "OPTIONS")
+        {
+            context.Response.StatusCode = 204;
+            context.Response.Close();
+            return;
+        }
+
+        try
+        {
+            // Route matching
+            if (path == "/api/status" && method == "GET")
+                await HandleGetStatus(context);
+            else if (path == "/api/golfers" && method == "GET")
+                await HandleGetGolfers(context);
+            else if (path == "/api/golfers" && method == "POST")
+                await HandleCreateGolfer(context);
+            else if (path.StartsWith("/api/golfers/") && method == "PUT")
+                await HandleUpdateGolfer(context, path);
+            else if (path.StartsWith("/api/golfers/") && method == "DELETE")
+                await HandleDeleteGolfer(context, path);
+            else if (path == "/api/overlays" && method == "GET")
+                await HandleGetOverlays(context);
+            else if (path.StartsWith("/api/overlays/logo") && method == "POST")
+                await HandleUploadLogo(context);
+            else if (path.StartsWith("/api/overlays/") && method == "PUT")
+                await HandleUpdateOverlay(context, path);
+            else if (path == "/api/clips" && method == "GET")
+                await HandleGetClips(context);
+            else if (path.StartsWith("/api/clips/") && path.EndsWith("/download") && method == "GET")
+                await HandleDownloadClip(context, path);
+            else if (path == "/api/schedules" && method == "GET")
+                await HandleGetSchedules(context);
+            else if (path == "/api/schedules" && method == "POST")
+                await HandleCreateSchedule(context);
+            else if (path.StartsWith("/api/schedules/") && method == "DELETE")
+                await HandleDeleteSchedule(context, path);
+            else if (path.StartsWith("/api/settings/") && method == "GET")
+                await HandleGetSetting(context, path);
+            else if (path.StartsWith("/api/settings/") && method == "PUT")
+                await HandleSetSetting(context, path);
+            else
+                await WriteJsonResponse(context, 404, new { error = "Not found" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "API error handling {Method} {Path}", method, path);
+            await WriteJsonResponse(context, 500, new { error = ex.Message });
+        }
+    }
+
+    private bool ValidateApiKey(HttpListenerContext context)
+    {
+        if (_settingsRepository == null)
+            return true; // No settings repo = no auth required
+
+        var apiKey = context.Request.Headers["X-API-Key"];
+        if (string.IsNullOrEmpty(apiKey))
+            return false;
+
+        // Synchronously get the stored key (acceptable for auth check)
+        var storedKey = _settingsRepository.GetAsync<string>(SettingsKeys.ApiKey).GetAwaiter().GetResult();
+        if (string.IsNullOrEmpty(storedKey))
+            return true; // No key configured = allow all
+
+        return apiKey == storedKey;
+    }
+
+    private async Task HandleGetStatus(HttpListenerContext context)
+    {
+        var status = _statusProvider?.Invoke() ?? new ApiStatusInfo();
+        status.Uptime = (DateTimeOffset.UtcNow - _startedAt).TotalSeconds;
+        status.StreamingState = _state.ToString();
+        status.ConnectedViewers = _viewers.Count;
+
+        await WriteJsonResponse(context, 200, status);
+    }
+
+    private async Task HandleGetGolfers(HttpListenerContext context)
+    {
+        if (_golferRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Golfer service not available" });
+            return;
+        }
+
+        var golfers = await _golferRepository.GetAllAsync();
+        await WriteJsonResponse(context, 200, golfers);
+    }
+
+    private async Task HandleCreateGolfer(HttpListenerContext context)
+    {
+        if (_golferRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Golfer service not available" });
+            return;
+        }
+
+        var body = await ReadJsonBody<GolferProfile>(context);
+        if (body == null) return;
+
+        body.Id = Guid.NewGuid().ToString();
+        body.CreatedAt = DateTimeOffset.UtcNow;
+        body.UpdatedAt = DateTimeOffset.UtcNow;
+        await _golferRepository.CreateAsync(body);
+        await WriteJsonResponse(context, 201, body);
+    }
+
+    private async Task HandleUpdateGolfer(HttpListenerContext context, string path)
+    {
+        if (_golferRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Golfer service not available" });
+            return;
+        }
+
+        var id = path.Replace("/api/golfers/", "");
+        var existing = await _golferRepository.GetByIdAsync(id);
+        if (existing == null)
+        {
+            await WriteJsonResponse(context, 404, new { error = "Golfer not found" });
+            return;
+        }
+
+        var body = await ReadJsonBody<GolferProfile>(context);
+        if (body == null) return;
+
+        body.Id = id;
+        body.UpdatedAt = DateTimeOffset.UtcNow;
+        await _golferRepository.UpdateAsync(body);
+        await WriteJsonResponse(context, 200, body);
+    }
+
+    private async Task HandleDeleteGolfer(HttpListenerContext context, string path)
+    {
+        if (_golferRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Golfer service not available" });
+            return;
+        }
+
+        var id = path.Replace("/api/golfers/", "");
+        await _golferRepository.DeleteAsync(id);
+        await WriteJsonResponse(context, 200, new { deleted = true });
+    }
+
+    private async Task HandleGetOverlays(HttpListenerContext context)
+    {
+        if (_overlayRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Overlay service not available" });
+            return;
+        }
+
+        var overlays = await _overlayRepository.GetAllAsync();
+        await WriteJsonResponse(context, 200, overlays);
+    }
+
+    private async Task HandleUpdateOverlay(HttpListenerContext context, string path)
+    {
+        if (_overlayRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Overlay service not available" });
+            return;
+        }
+
+        var type = path.Replace("/api/overlays/", "");
+        var body = await ReadJsonBody<OverlayConfigRecord>(context);
+        if (body == null) return;
+
+        body.Type = type;
+        body.UpdatedAt = DateTimeOffset.UtcNow;
+        await _overlayRepository.SaveAsync(body);
+        await WriteJsonResponse(context, 200, body);
+    }
+
+    private async Task HandleUploadLogo(HttpListenerContext context)
+    {
+        if (string.IsNullOrEmpty(_exportDirectory))
+        {
+            await WriteJsonResponse(context, 503, new { error = "Export directory not configured" });
+            return;
+        }
+
+        var logoDir = Path.Combine(_exportDirectory, "logos");
+        Directory.CreateDirectory(logoDir);
+
+        // Read the multipart body as raw bytes
+        using var ms = new MemoryStream();
+        await context.Request.InputStream.CopyToAsync(ms);
+        var fileName = $"logo_{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.png";
+        var filePath = Path.Combine(logoDir, fileName);
+        await File.WriteAllBytesAsync(filePath, ms.ToArray());
+
+        await WriteJsonResponse(context, 200, new { path = filePath, fileName });
+    }
+
+    private async Task HandleGetClips(HttpListenerContext context)
+    {
+        if (string.IsNullOrEmpty(_exportDirectory) || !Directory.Exists(_exportDirectory))
+        {
+            await WriteJsonResponse(context, 200, Array.Empty<object>());
+            return;
+        }
+
+        var clips = Directory.GetFiles(_exportDirectory, "*.mp4", SearchOption.AllDirectories)
+            .Select(f => new FileInfo(f))
+            .OrderByDescending(f => f.CreationTimeUtc)
+            .Select(f => new
+            {
+                name = f.Name,
+                path = f.FullName,
+                size = f.Length,
+                created = f.CreationTimeUtc,
+                modified = f.LastWriteTimeUtc
+            })
+            .ToList();
+
+        await WriteJsonResponse(context, 200, clips);
+    }
+
+    private async Task HandleDownloadClip(HttpListenerContext context, string path)
+    {
+        // Extract clip name: /api/clips/{name}/download
+        var segments = path.Split('/');
+        if (segments.Length < 4)
+        {
+            await WriteJsonResponse(context, 400, new { error = "Invalid clip path" });
+            return;
+        }
+
+        var clipName = Uri.UnescapeDataString(segments[3]);
+        if (string.IsNullOrEmpty(_exportDirectory))
+        {
+            await WriteJsonResponse(context, 503, new { error = "Export directory not configured" });
+            return;
+        }
+
+        // Sanitize to prevent path traversal
+        clipName = Path.GetFileName(clipName);
+        var filePath = Path.Combine(_exportDirectory, clipName);
+
+        if (!File.Exists(filePath))
+        {
+            // Search subdirectories
+            var found = Directory.GetFiles(_exportDirectory, clipName, SearchOption.AllDirectories).FirstOrDefault();
+            if (found == null)
+            {
+                await WriteJsonResponse(context, 404, new { error = "Clip not found" });
+                return;
+            }
+            filePath = found;
+        }
+
+        context.Response.ContentType = "video/mp4";
+        context.Response.ContentLength64 = new FileInfo(filePath).Length;
+        context.Response.Headers.Add("Content-Disposition", $"attachment; filename=\"{clipName}\"");
+
+        using var fs = File.OpenRead(filePath);
+        await fs.CopyToAsync(context.Response.OutputStream);
+        context.Response.Close();
+    }
+
+    private async Task HandleGetSchedules(HttpListenerContext context)
+    {
+        if (_schedulingService == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Scheduling service not available" });
+            return;
+        }
+
+        await WriteJsonResponse(context, 200, _schedulingService.Schedules);
+    }
+
+    private async Task HandleCreateSchedule(HttpListenerContext context)
+    {
+        if (_schedulingService == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Scheduling service not available" });
+            return;
+        }
+
+        var body = await ReadJsonBody<ScheduledRecordingRequest>(context);
+        if (body == null) return;
+
+        var schedule = await _schedulingService.CreateScheduleAsync(body);
+        await WriteJsonResponse(context, 201, schedule);
+    }
+
+    private async Task HandleDeleteSchedule(HttpListenerContext context, string path)
+    {
+        if (_schedulingService == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Scheduling service not available" });
+            return;
+        }
+
+        var idStr = path.Replace("/api/schedules/", "");
+        if (!Guid.TryParse(idStr, out var id))
+        {
+            await WriteJsonResponse(context, 400, new { error = "Invalid schedule ID" });
+            return;
+        }
+
+        await _schedulingService.DeleteScheduleAsync(id);
+        await WriteJsonResponse(context, 200, new { deleted = true });
+    }
+
+    private async Task HandleGetSetting(HttpListenerContext context, string path)
+    {
+        if (_settingsRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Settings service not available" });
+            return;
+        }
+
+        var key = path.Replace("/api/settings/", "");
+        var value = await _settingsRepository.GetAsync<object>(key);
+        await WriteJsonResponse(context, 200, new { key, value });
+    }
+
+    private async Task HandleSetSetting(HttpListenerContext context, string path)
+    {
+        if (_settingsRepository == null)
+        {
+            await WriteJsonResponse(context, 503, new { error = "Settings service not available" });
+            return;
+        }
+
+        var key = path.Replace("/api/settings/", "");
+
+        using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
+        var bodyStr = await reader.ReadToEndAsync();
+
+        string value;
+        try
+        {
+            using var doc = JsonDocument.Parse(bodyStr);
+            value = doc.RootElement.TryGetProperty("value", out var val) ? val.ToString() : bodyStr;
+        }
+        catch
+        {
+            value = bodyStr;
+        }
+
+        await _settingsRepository.SetAsync(key, value);
+        await WriteJsonResponse(context, 200, new { key, value });
+    }
+
+    private static async Task WriteJsonResponse(HttpListenerContext context, int statusCode, object data)
+    {
+        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var bytes = Encoding.UTF8.GetBytes(json);
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.ContentLength64 = bytes.Length;
+        await context.Response.OutputStream.WriteAsync(bytes);
+        context.Response.Close();
+    }
+
+    private static async Task<T?> ReadJsonBody<T>(HttpListenerContext context) where T : class
+    {
+        try
+        {
+            using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
+            var body = await reader.ReadToEndAsync();
+            return JsonSerializer.Deserialize<T>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception)
+        {
+            await WriteJsonResponse(context, 400, new { error = "Invalid JSON body" });
+            return null;
         }
     }
 
@@ -760,6 +1189,22 @@ public sealed class WebRtcStreamingService : IStreamingService
     {
         await StopAsync();
     }
+}
+
+/// <summary>
+/// Status information provided by the desktop app for the /api/status endpoint.
+/// </summary>
+public class ApiStatusInfo
+{
+    public string StreamingState { get; set; } = "Stopped";
+    public int ConnectedViewers { get; set; }
+    public double Uptime { get; set; }
+    public int SwingCount { get; set; }
+    public bool IsRecording { get; set; }
+    public bool IsSessionActive { get; set; }
+    public string? GolferName { get; set; }
+    public string? AutoCutState { get; set; }
+    public int PracticeSwingCount { get; set; }
 }
 
 internal class ViewerSession

@@ -154,6 +154,14 @@ public static class SettingsKeys
     public const string MaxConcurrentUploads = "upload.maxConcurrent";
     public const string DefaultUploadProvider = "upload.defaultProvider";
 
+    // Golf
+    public const string GolfAutoUpload = "golf.autoUpload";
+    public const string GolfAutoUploadProvider = "golf.autoUploadProvider";
+    public const string GolfAutoUploadRemotePath = "golf.autoUploadRemotePath";
+
+    // API
+    public const string ApiKey = "api.key";
+
     // UI
     public const string WindowState = "ui.windowState";
     public const string WindowBounds = "ui.windowBounds";

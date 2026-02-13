@@ -1,0 +1,5 @@
+node_modules/
+panel.db
+panel.db-wal
+panel.db-shm
+.env

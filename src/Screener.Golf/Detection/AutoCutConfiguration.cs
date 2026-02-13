@@ -53,6 +53,26 @@ public class AutoCutConfiguration
     /// <summary>SAD threshold for inter-frame "static" detection. Default 200.</summary>
     public double StaticSceneThreshold { get; set; } = 200;
 
+    // --- Audio Swing Detection ---
+
+    /// <summary>Enable audio-based swing detection. Default true.</summary>
+    public bool AudioEnabled { get; set; } = true;
+
+    /// <summary>Audio RMS spike must exceed EMA by this multiplier. Default 5.0 (sharper transients than video).</summary>
+    public double AudioSpikeMultiplier { get; set; } = 5.0;
+
+    /// <summary>Minimum audio level (dB) to consider for spike detection. Default -30.0.</summary>
+    public double MinimumAudioThresholdDb { get; set; } = -30.0;
+
+    /// <summary>Audio EMA smoothing factor (0-1). Higher = faster tracking. Default 0.1.</summary>
+    public double AudioEmaAlpha { get; set; } = 0.1;
+
+    /// <summary>When true, audio spike alone triggers cut without video confirmation. Default false.</summary>
+    public bool AudioOnlyMode { get; set; } = false;
+
+    /// <summary>Max gap (ms) between audio and video spikes for fusion trigger. Default 200.</summary>
+    public double AudioVideoFusionWindowMs { get; set; } = 200.0;
+
     // --- Timing ---
 
     /// <summary>Maximum time on Source 2 before forcing a cut back (seconds). Default 30.</summary>
@@ -76,7 +96,10 @@ public class AutoCutConfiguration
         SwingSpikeMultiplier = 3.0,
         MinimumSpikeThreshold = 300,
         IdleSimilarityThreshold = 0.90,
-        ConsecutiveIdleFramesRequired = 2
+        ConsecutiveIdleFramesRequired = 2,
+        AudioSpikeMultiplier = 3.5,
+        MinimumAudioThresholdDb = -35,
+        AudioEmaAlpha = 0.15
     };
 
     public static AutoCutConfiguration LowSensitivity => new()
@@ -84,6 +107,9 @@ public class AutoCutConfiguration
         SwingSpikeMultiplier = 6.0,
         MinimumSpikeThreshold = 800,
         IdleSimilarityThreshold = 0.97,
-        ConsecutiveIdleFramesRequired = 4
+        ConsecutiveIdleFramesRequired = 4,
+        AudioSpikeMultiplier = 7.0,
+        MinimumAudioThresholdDb = -25,
+        AudioEmaAlpha = 0.07
     };
 }
